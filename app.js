@@ -593,6 +593,8 @@ function bind(){
   });
   // exportar
   $("#exportBtn").addEventListener("click",exportDesign);
+  // logout
+  $("#btn-logout").addEventListener("click",doLogout);
   // borrar seleccionado/s con tecla (Supr/Backspace)
   document.addEventListener("keydown",e=>{
     if(e.key==="Escape"){ closeInfo(); return; }
@@ -628,11 +630,57 @@ function exportDesign(){
 }
 
 /* ============================================================
+   LOGIN CON GOOGLE (Google Identity Services)
+   Usa el MISMO Client ID web que la app de Inventario.
+   ============================================================ */
+const GOOGLE_CLIENT_ID = (window.CV_CONFIG && window.CV_CONFIG.googleClientId) || "";
+const loginRequired = ()=> !!GOOGLE_CLIENT_ID;
+const SESSION_KEY = "circuitoVerde.session";
+let session = null;
+try{ session = JSON.parse(localStorage.getItem(SESSION_KEY)) || null; }catch(e){}
+const sessionValid = ()=> !!session && (!session.exp || session.exp*1000 > Date.now());
+function saveSession(s){ session=s; try{ s?localStorage.setItem(SESSION_KEY,JSON.stringify(s)):localStorage.removeItem(SESSION_KEY); }catch(e){} }
+function decodeJwt(t){ try{ const p=t.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+  return JSON.parse(decodeURIComponent(atob(p).split("").map(c=>"%"+("00"+c.charCodeAt(0).toString(16)).slice(-2)).join(""))); }catch(e){ return null; } }
+function waitForGoogle(cb,n=0){
+  if(window.google && google.accounts && google.accounts.id) return cb();
+  if(n>40){ const e=$("#login-error"); e.hidden=false; e.textContent="No se pudo cargar Google. Revisá tu conexión."; return; }
+  setTimeout(()=>waitForGoogle(cb,n+1),150);
+}
+function initGoogle(){
+  waitForGoogle(()=>{
+    google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID, callback:onGoogleCredential, auto_select:true});
+    google.accounts.id.renderButton($("#g-signin"),{theme:"filled_blue",size:"large",text:"signin_with",shape:"pill",locale:"es"});
+    google.accounts.id.prompt();
+  });
+}
+function onGoogleCredential(resp){
+  const p=decodeJwt(resp.credential);
+  if(!p||!p.email){ const e=$("#login-error"); e.hidden=false; e.textContent="No se pudo validar la cuenta. Probá de nuevo."; return; }
+  saveSession({token:resp.credential, email:p.email, name:p.name||p.email, picture:p.picture||"", exp:p.exp});
+  onAuthenticated();
+}
+function requireLogin(){ $("#login-gate").hidden=false; $("#user-menu").hidden=true; initGoogle(); }
+function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); }
+function renderUserChip(){
+  if(!loginRequired()||!session){ $("#user-menu").hidden=true; return; }
+  $("#user-avatar").src = session.picture || "img/lechuga.png";
+  $("#user-name").textContent = session.name || session.email;
+  $("#user-menu").hidden=false;
+}
+function doLogout(){
+  if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
+  saveSession(null); renderUserChip(); requireLogin();
+}
+
+/* ============================================================
    INICIO
    ============================================================ */
 function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage();
+  if(loginRequired() && !sessionValid()) requireLogin();
+  else renderUserChip();
 }
 document.addEventListener("DOMContentLoaded",init);

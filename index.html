@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Circuito Verde · Planificador de Huerta e Invernadero — Patagonia / INTA Bariloche</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
     --bg:#f4f1e8;
@@ -198,6 +199,29 @@
   .empty-hint .big{font-size:40px;margin-bottom:6px}
 
   .loading{padding:14px;font-size:12px;color:var(--ink-soft);text-align:center}
+
+  /* menú de usuario en el header */
+  #user-menu{display:flex;align-items:center;gap:8px;color:#fbf9f1}
+  #user-menu[hidden]{display:none}
+  #user-avatar{width:30px;height:30px;border-radius:50%;border:2px solid rgba(255,255,255,.6);object-fit:cover;background:#fff}
+  #user-menu .u-info{font-size:12px;line-height:1.1;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #btn-logout{border:1px solid rgba(255,255,255,.5);background:rgba(255,255,255,.12);color:#fff;
+    border-radius:8px;padding:5px 10px;font-size:11px;font-weight:600;cursor:pointer}
+  #btn-logout:hover{background:rgba(255,255,255,.24)}
+
+  /* gate de login */
+  #login-gate{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;
+    background:linear-gradient(135deg,var(--green-dark),var(--green));padding:20px}
+  #login-gate[hidden]{display:none}
+  .login-card{background:var(--paper);border-radius:18px;box-shadow:0 20px 50px rgba(0,0,0,.35);
+    padding:34px 30px;text-align:center;max-width:380px;width:100%}
+  .login-logo{font-size:50px;line-height:1}
+  .login-card h2{margin:8px 0 2px;color:var(--green-dark);font-size:24px}
+  .login-sub{margin:0 0 16px;color:var(--ink-soft);font-size:12.5px}
+  .login-txt{margin:0 0 18px;color:var(--ink);font-size:13.5px}
+  #g-signin{display:flex;justify-content:center;min-height:44px}
+  #login-error{color:#c0512f;font-size:12px;margin:14px 0 0}
+  #login-error[hidden]{display:none}
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
 </style>
@@ -210,7 +234,24 @@
   </h1>
   <div class="spacer"></div>
   <div class="hint">Arrastrá las plantas y los tablones al lienzo. El círculo punteado de cada planta es la distancia real que necesita. 1 cuadro = 1&nbsp;m².</div>
+  <div id="user-menu" hidden>
+    <img id="user-avatar" alt="" />
+    <div class="u-info"><span id="user-name"></span></div>
+    <button id="btn-logout" title="Cerrar sesión">Salir</button>
+  </div>
 </header>
+
+<!-- gate de login con Google -->
+<div id="login-gate" hidden>
+  <div class="login-card">
+    <div class="login-logo">🌱</div>
+    <h2>Circuito Verde</h2>
+    <p class="login-sub">Planificador de huerta e invernadero · Patagonia</p>
+    <p class="login-txt">Ingresá con tu cuenta de Google para usar el planificador.</p>
+    <div id="g-signin"></div>
+    <p id="login-error" hidden></p>
+  </div>
+</div>
 
 <main>
   <!-- CATALOGO -->
@@ -309,6 +350,7 @@
   </defs>
 </svg>
 
+<script src="config.js"></script>
 <script src="plants.js"></script>
 <script src="details.js"></script>
 <script src="app.js"></script>
