@@ -375,6 +375,7 @@ function boardEl(b){
       <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="rot" title="Rotar 90°">⟳</button>
       <button class="del" title="Quitar bancal">✕</button>
+      <button class="ana" title="Analizar bancal y rotación (INTA)">🔬</button>
       <span class="handle" title="Redimensionar"></span>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
@@ -382,6 +383,8 @@ function boardEl(b){
     e.stopPropagation(); pushUndo(); state.boards = state.boards.filter(x=>x.uid!==b.uid); save(); renderStage();});
   el.querySelector(".rot").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".rot").addEventListener("click",e=>{ e.stopPropagation(); rotateBoard(b); });
+  el.querySelector(".ana").addEventListener("pointerdown",e=>{e.stopPropagation();});
+  el.querySelector(".ana").addEventListener("click",e=>{ e.stopPropagation(); openBoardAnalysis(b); });
   makeBoardDraggable(el, b);
   makeBoardResizable(el.querySelector(".handle"), el.querySelector(".board-rect"), b);
   return el;
@@ -992,6 +995,91 @@ function openAnalysis(){
       <h5 class="asec">🛒 Lista de compra (plantines / semillas)</h5>
       <table class="atable"><tr><th>Planta</th><th>Cant.</th><th>Cómo</th></tr>${shop}</table>
     </div>`);
+}
+
+/* ---- rotación de cultivos por bancal (criterio INTA) ---- */
+const ROT_INTA = {
+  // Secuencia por nivel de exigencia (INTA/ProHuerta): exigente → medianamente exigente → poco exigente → reponedora
+  seq: ["fruto","hoja","raiz","leguminosa"],
+  label: { fruto:"Fruto (las más exigentes — fósforo)", hoja:"Hoja (exigentes en nitrógeno)",
+    raiz:"Raíz y bulbo (poco exigentes — potasio)", leguminosa:"Leguminosas (reponedoras — fijan nitrógeno)",
+    cobertura:"Abono verde / cobertura", otra:"Aromáticas y flores" },
+  next: { fruto:"hoja", hoja:"raiz", raiz:"leguminosa", leguminosa:"fruto" },
+  ejemplos: { fruto:"tomate, pimiento, zapallo, pepino, maíz", hoja:"lechuga, acelga, espinaca, repollo, brócoli",
+    raiz:"zanahoria, remolacha, cebolla, ajo, papa", leguminosa:"arveja, haba, poroto/chaucha, trébol, vicia" },
+  anios: "3 a 4",
+  reglas: [
+    "Rotar el cultivo de cantero en cantero año tras año, alternando familia botánica y parte cosechada (hoja, fruto, raíz). — INTA",
+    "No repetir la misma hortaliza ni familia en el mismo lugar; una rotación de 3 a 4 años es adecuada. — ProHuerta",
+    "Alternar exigentes (fruto) → medianamente exigentes (hoja) → poco exigentes (raíz) → reponedoras (leguminosas/abonos verdes). — INTA",
+    "Las de hoja consumen sobre todo nitrógeno; las de fruto, fósforo; las de raíz, potasio (y a distintas profundidades). — INTA",
+    "Rotar corta los ciclos de plagas y enfermedades del suelo. — INTA, Manual de la huerta agroecológica"
+  ],
+  fuentes: [
+    "https://inta.gob.ar/documentos/rotacion-de-cultivos-en-el-huerto",
+    "https://www.argentina.gob.ar/sites/default/files/2023/08/inta_-_manual_de_la_huerta_agroecologica.pdf",
+    "https://procadisaplicativos.inta.gob.ar/cursosautoaprendizaje/huertaorganica/l4_p7.html"
+  ]
+};
+function rotGroup(p){
+  if(p.grupo==="Leguminosas") return "leguminosa";
+  if(p.grupo==="Brássicas") return "hoja";                  // brássicas: exigentes tipo hoja
+  const c=p.categoria;
+  if(c==="Hortaliza de hoja") return "hoja";
+  if(c==="Hortaliza de raíz"||c==="Hortaliza de bulbo") return "raiz";
+  if(c==="Hortaliza de fruto"||c==="Frutal menor") return "fruto";
+  if(c==="Abono verde/Cobertura") return p.funciones.includes("nitrogeno")?"leguminosa":"cobertura";
+  return "otra";                                            // aromáticas, flores
+}
+function plantsInBoard(b){
+  return state.plants.filter(pl=> pl.x>=b.x-0.01 && pl.x<=b.x+b.L+0.01 && pl.y>=b.y-0.01 && pl.y<=b.y+b.W+0.01);
+}
+function openBoardAnalysis(b){
+  const inside=plantsInBoard(b);
+  if(!inside.length){
+    showModal(`<div style="padding:26px;text-align:center"><div style="font-size:42px">🔬</div>
+      <h3>Bancal vacío</h3><p style="color:var(--ink-soft)">Poné plantas dentro de este bancal (${b.L.toFixed(1)}×${b.W.toFixed(1)} m) y volvé a analizarlo.</p></div>`);
+    return;
+  }
+  const famCount={}, grpCount={}, counts={};
+  inside.forEach(pl=>{ const p=byId[pl.id]; if(!p) return;
+    counts[pl.id]=(counts[pl.id]||0)+1; famCount[p.grupo]=(famCount[p.grupo]||0)+1;
+    const g=rotGroup(p); grpCount[g]=(grpCount[g]||0)+1; });
+  const hasLeg = (grpCount.leguminosa||0)>0;
+  const demandOrder=["hoja","fruto","raiz","leguminosa"];
+  let dom=null,domN=0; demandOrder.forEach(g=>{ if((grpCount[g]||0)>domN){ domN=grpCount[g]; dom=g; } });
+  const familias=Object.keys(famCount);
+  const famRepetidas=Object.entries(famCount).filter(([f,n])=>n>=2).map(([f])=>f);
+  const plantList=Object.keys(counts).map(id=>`<span class="pill">${byId[id].nombre} ×${counts[id]}`+`</span>`).join("");
+  const famList=Object.entries(famCount).sort((a,b)=>b[1]-a[1]).map(([f,n])=>`<span class="pill">${f} (${n})</span>`).join("");
+  let reco="";
+  if(dom){
+    const ng=ROT_INTA.next[dom];
+    reco = `<div class="ok-box"><b>Próxima temporada:</b> este bancal fue de <b>${ROT_INTA.label[dom].toLowerCase()}</b>. Según la rotación INTA, seguí con <b>${ROT_INTA.label[ng].toLowerCase()}</b> — ej.: ${ROT_INTA.ejemplos[ng]}.</div>`;
+    reco += hasLeg
+      ? `<div class="ok-box">✅ Hay leguminosas que aportan nitrógeno: el suelo queda en buenas condiciones para el próximo ciclo.</div>`
+      : `<div class="warn-box">🌱 No hay leguminosas. Antes del próximo cultivo exigente, sembrá una <b>leguminosa o abono verde</b> (arveja, haba, trébol, vicia) para reponer nitrógeno.</div>`;
+  }
+  if(famRepetidas.length){
+    reco += `<div class="warn-box">⚠️ Familia(s) con varias plantas: <b>${famRepetidas.join(", ")}</b>. No vuelvas a plantar esa familia acá por unos ${ROT_INTA.anios} años (evita plagas y enfermedades del suelo).</div>`;
+  }
+  const ciclo = ROT_INTA.seq.map(g=>`${g===dom?"<b>":""}${ROT_INTA.label[g].split(" (")[0]}${g===dom?" ⬅ ahora</b>":""}`).join(" → ");
+  const fuentesHtml = ROT_INTA.fuentes.length
+    ? `<div class="m-foot">Rotación según criterio INTA / ProHuerta. Fuentes: ${ROT_INTA.fuentes.map((u,i)=>`<a href="${u}" target="_blank" rel="noopener">[${i+1}]</a>`).join(" ")}</div>`
+    : `<div class="m-foot">Rotación según criterio agroecológico de INTA / ProHuerta. Orientativo: verificá la cartilla de tu zona.</div>`;
+  showModal(`
+    <div class="m-head"><div><h3>🔬 Análisis del bancal · rotación INTA</h3>
+      <div class="m-sci">${b.L.toFixed(1)} × ${b.W.toFixed(1)} m · ${inside.length} plantas</div></div></div>
+    <div style="padding:12px 18px">
+      <h5 class="asec">Plantas en el bancal</h5><div class="cal-list">${plantList}</div>
+      <h5 class="asec">Familias presentes</h5><div class="cal-list">${famList}</div>
+      <h5 class="asec">Ciclo de rotación (INTA)</h5>
+      <div style="font-size:12.5px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px">${ciclo}</div>
+      <h5 class="asec">Recomendación</h5>${reco}
+      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--green-dark);font-weight:600">¿Por qué rotar? (INTA)</summary>
+        <ul style="font-size:12.5px;color:var(--ink);margin:8px 0 0;padding-left:18px;line-height:1.5">${ROT_INTA.reglas.map(r=>`<li>${r}</li>`).join("")}</ul></details>
+    </div>
+    ${fuentesHtml}`);
 }
 
 /* ---- calendario de siembra ---- */
