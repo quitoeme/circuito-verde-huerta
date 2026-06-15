@@ -188,7 +188,13 @@
     position:absolute;right:14px;bottom:14px;background:var(--paper);border:1px solid var(--line);
     border-radius:12px;box-shadow:var(--shadow);padding:10px 14px;font-size:12px;min-width:180px;z-index:8
   }
-  .stats h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--green-dark)}
+  .stats h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--green-dark);
+    cursor:pointer;user-select:none;display:flex;justify-content:space-between;align-items:center;gap:10px}
+  .stats .caret{font-size:9px;transition:transform .15s}
+  .stats.collapsed{min-width:0}
+  .stats.collapsed h4{margin:0}
+  .stats.collapsed .stats-body{display:none}
+  .stats.collapsed .caret{transform:rotate(-90deg)}
   .stats .row{display:flex;justify-content:space-between;gap:12px;margin:2px 0;color:var(--ink-soft)}
   .stats .row b{color:var(--ink)}
   .stats .mini{margin-top:6px;max-height:120px;overflow:auto}
@@ -356,12 +362,14 @@
         </div>
       </div>
       <div class="stats" id="stats">
-        <h4>Resumen del diseño</h4>
-        <div class="row"><span>Plantas</span><b id="stPlants">0</b></div>
-        <div class="row"><span>Especies</span><b id="stSpecies">0</b></div>
-        <div class="row"><span>Bancales</span><b id="stBoards">0</b></div>
-        <div class="row"><span>Área bancales</span><b id="stArea">0 m²</b></div>
-        <div class="mini" id="stMini"></div>
+        <h4 id="statsToggle" title="Mostrar/ocultar">Resumen del diseño <span class="caret">▾</span></h4>
+        <div class="stats-body">
+          <div class="row"><span>Plantas</span><b id="stPlants">0</b></div>
+          <div class="row"><span>Especies</span><b id="stSpecies">0</b></div>
+          <div class="row"><span>Bancales</span><b id="stBoards">0</b></div>
+          <div class="row"><span>Área bancales</span><b id="stArea">0 m²</b></div>
+          <div class="mini" id="stMini"></div>
+        </div>
       </div>
     </div>
   </section>

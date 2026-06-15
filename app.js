@@ -370,7 +370,7 @@ function startGroupDrag(e, el){
   }).filter(Boolean);
   const startMX=(e.clientX-rect.left)/s, startMY=(e.clientY-rect.top)/s;
   let moved=false;
-  el.setPointerCapture(e.pointerId);
+  try{ el.setPointerCapture(e.pointerId); }catch(_){}
   const move=ev=>{
     moved=true;
     const dx=(ev.clientX-rect.left)/s-startMX, dy=(ev.clientY-rect.top)/s-startMY;
@@ -382,10 +382,10 @@ function startGroupDrag(e, el){
     });
     detectOverlaps();
   };
-  const up=()=>{ el.releasePointerCapture(e.pointerId);
-    el.removeEventListener("pointermove",move); el.removeEventListener("pointerup",up);
+  const up=()=>{ try{ el.releasePointerCapture(e.pointerId); }catch(_){}
+    document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up);
     if(moved){save(); renderStats();} };
-  el.addEventListener("pointermove",move); el.addEventListener("pointerup",up);
+  document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
 }
 /* ---------- drag de plantas ya colocadas ---------- */
 function makePlantDraggable(el, inst){
@@ -412,7 +412,7 @@ function makeBoardResizable(handle, rectEl, b){
   handle.addEventListener("pointerdown", e=>{
     e.preventDefault(); e.stopPropagation();
     const s=state.scale; const startX=e.clientX, startY=e.clientY, L0=b.L, W0=b.W;
-    handle.setPointerCapture(e.pointerId);
+    try{ handle.setPointerCapture(e.pointerId); }catch(_){}
     const move=ev=>{
       b.L = Math.max(0.2, +(L0 + (ev.clientX-startX)/s).toFixed(2));
       b.W = Math.max(0.2, +(W0 + (ev.clientY-startY)/s).toFixed(2));
@@ -424,10 +424,10 @@ function makeBoardResizable(handle, rectEl, b){
       rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
       rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
     };
-    const up=()=>{ handle.releasePointerCapture(e.pointerId);
-      handle.removeEventListener("pointermove",move); handle.removeEventListener("pointerup",up);
+    const up=()=>{ try{ handle.releasePointerCapture(e.pointerId); }catch(_){}
+      document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up);
       save(); renderStats(); };
-    handle.addEventListener("pointermove",move); handle.addEventListener("pointerup",up);
+    document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
   });
 }
 /* ---------- solapamiento (plantas muy juntas) ---------- */
@@ -595,6 +595,8 @@ function bind(){
   $("#exportBtn").addEventListener("click",exportDesign);
   // logout
   $("#btn-logout").addEventListener("click",doLogout);
+  // plegar resumen
+  $("#statsToggle").addEventListener("click",()=>$("#stats").classList.toggle("collapsed"));
   // tutorial
   $("#btnTutorial").addEventListener("click",openTutorial);
   $("#tutClose").addEventListener("click",closeTutorial);
