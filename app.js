@@ -595,9 +595,16 @@ function bind(){
   $("#exportBtn").addEventListener("click",exportDesign);
   // logout
   $("#btn-logout").addEventListener("click",doLogout);
+  // tutorial
+  $("#btnTutorial").addEventListener("click",openTutorial);
+  $("#tutClose").addEventListener("click",closeTutorial);
+  $("#tutSkip").addEventListener("click",closeTutorial);
+  $("#tutNext").addEventListener("click",tutNext);
+  $("#tutPrev").addEventListener("click",tutPrev);
+  $("#tutorial").addEventListener("click",e=>{ if(e.target.id==="tutorial") closeTutorial(); });
   // borrar seleccionado/s con tecla (Supr/Backspace)
   document.addEventListener("keydown",e=>{
-    if(e.key==="Escape"){ closeInfo(); return; }
+    if(e.key==="Escape"){ closeInfo(); if(!$("#tutorial").hidden) closeTutorial(); return; }
     if((e.key==="Delete"||e.key==="Backspace") && selUids.size){
       const t=document.activeElement; if(t && /INPUT|TEXTAREA/.test(t.tagName)) return;
       state.plants=state.plants.filter(x=>!selUids.has(x.uid));
@@ -628,6 +635,44 @@ function exportDesign(){
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
   a.download="circuito-verde-diseno.json"; a.click(); URL.revokeObjectURL(a.href);
 }
+
+/* ============================================================
+   TUTORIAL / ONBOARDING
+   ============================================================ */
+const TUT_KEY = "circuitoVerde.tutDone";
+const TUTORIAL = [
+  {art:"🌱", title:"¡Bienvenido a Circuito Verde!",
+   text:"Planificá tu <b>huerta e invernadero</b> para el clima patagónico. Elegí plantas del catálogo y diseñá tus bancales arrastrándolas a un lienzo a escala real. Te muestro cómo en 1 minuto."},
+  {art:"📚", title:"Catálogo y 3 listas",
+   text:"A la izquierda tenés <b>61 plantas</b> de huerta patagónica (INTA Bariloche). Cambiá entre las 3 vistas: <b>Todas</b>, <b>por categoría</b> y <b>por nombre científico/grupo</b>. Arriba hay un <b>buscador</b>."},
+  {art:"🎛️", title:"Filtros por función y temporada",
+   text:"Filtrá por <b>función</b> (🥬 comestible, 🛡️ repele plagas, 🐝 polinizadores, 🐞 benéficos…) y por <b>temporada</b> (🌸☀️🍂❄️). Cada tarjeta muestra además el <b>método</b>: 🌱 siembra directa o 🪴 trasplante."},
+  {art:"＋", title:"Botón “+ info”",
+   text:"En cada planta tocá <b>＋ info</b> para ver su ficha: <b>emparejamiento positivo y negativo</b> (con qué se lleva bien o mal), riego, luz, fortalezas, debilidades, temporada y época de siembra."},
+  {art:"🫳", title:"Arrastrá plantas al lienzo",
+   text:"Llevá una planta del catálogo al lienzo. El <b>círculo punteado</b> es la distancia real que necesita entre planta y planta. Si dos quedan <b>demasiado juntas</b>, sus círculos se marcan en <b>rojo</b>."},
+  {art:"🟫", title:"Bancales (tablones)",
+   text:"Elegí <b>largo y ancho</b> (ej. 2×1 m) y tocá <b>+ Tablón</b>. Es un cuadrilátero con borde de madera y <b>relleno blanco</b> para ver bien las plantas. Movelo y redimensionalo desde la esquina ⬛."},
+  {art:"🗺️", title:"Tu terreno con margen",
+   text:"El recuadro punteado verde es tu <b>terreno</b> (cambiá las medidas y tocá <b>Aplicar</b>). Alrededor hay un <b>margen</b> para acomodar plantas y jugar con la zona antes de meterlas al cantero."},
+  {art:"🖐️", title:"Seleccionar, mover y zoom",
+   text:"<kbd>Shift</kbd> + clic selecciona <b>varias</b> plantas/bancales para moverlos o borrarlos juntos. <kbd>Ctrl</kbd> + rueda hace <b>zoom</b>. Doble clic borra una planta; <kbd>Supr</kbd> borra lo seleccionado."},
+  {art:"💾", title:"Se guarda solo · Exportar",
+   text:"Tu diseño se <b>guarda automáticamente</b> en este navegador. <b>Exportar</b> baja un JSON con plantas, cantidades y bancales. <b>Vaciar</b> limpia todo. ¡A diseñar tu huerta! 🌻"},
+];
+let tutStep = 0;
+function renderTut(){
+  const s = TUTORIAL[tutStep];
+  $("#tutArt").textContent = s.art; $("#tutTitle").textContent = s.title; $("#tutText").innerHTML = s.text;
+  $("#tutDots").innerHTML = TUTORIAL.map((_,i)=>`<span class="${i===tutStep?"on":""}"></span>`).join("");
+  $("#tutPrev").style.visibility = tutStep===0 ? "hidden" : "visible";
+  $("#tutNext").textContent = tutStep===TUTORIAL.length-1 ? "¡Listo!" : "Siguiente ›";
+}
+function openTutorial(){ tutStep=0; renderTut(); $("#tutorial").hidden=false; }
+function closeTutorial(){ $("#tutorial").hidden=true; try{ localStorage.setItem(TUT_KEY,"1"); }catch(e){} }
+function tutNext(){ if(tutStep>=TUTORIAL.length-1){ closeTutorial(); return; } tutStep++; renderTut(); }
+function tutPrev(){ if(tutStep>0){ tutStep--; renderTut(); } }
+function maybeAutoTutorial(){ try{ if(!localStorage.getItem(TUT_KEY)) openTutorial(); }catch(e){} }
 
 /* ============================================================
    LOGIN CON GOOGLE (Google Identity Services)
@@ -661,7 +706,7 @@ function onGoogleCredential(resp){
   onAuthenticated();
 }
 function requireLogin(){ $("#login-gate").hidden=false; $("#user-menu").hidden=true; initGoogle(); }
-function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); }
+function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); maybeAutoTutorial(); }
 function renderUserChip(){
   if(!loginRequired()||!session){ $("#user-menu").hidden=true; return; }
   $("#user-avatar").src = session.picture || "img/lechuga.png";
@@ -680,7 +725,7 @@ function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage();
-  if(loginRequired() && !sessionValid()) requireLogin();
-  else renderUserChip();
+  if(loginRequired() && !sessionValid()){ requireLogin(); }
+  else { renderUserChip(); maybeAutoTutorial(); }
 }
 document.addEventListener("DOMContentLoaded",init);

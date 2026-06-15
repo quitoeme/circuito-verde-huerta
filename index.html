@@ -200,6 +200,31 @@
 
   .loading{padding:14px;font-size:12px;color:var(--ink-soft);text-align:center}
 
+  /* botón del header (tutorial) */
+  .hdr-btn{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:#fff;
+    border-radius:9px;padding:6px 11px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .hdr-btn:hover{background:rgba(255,255,255,.26)}
+
+  /* tutorial */
+  #tutorial{position:fixed;inset:0;z-index:400;display:flex;align-items:center;justify-content:center;
+    background:rgba(34,43,37,.55);padding:20px}
+  #tutorial[hidden]{display:none}
+  .tut-card{background:var(--paper);border-radius:18px;box-shadow:0 22px 55px rgba(0,0,0,.35);
+    max-width:440px;width:100%;padding:26px 26px 18px;text-align:center;position:relative}
+  .tut-x{position:absolute;top:12px;right:12px;width:28px;height:28px;border-radius:50%;border:0;
+    background:rgba(0,0,0,.06);font-size:13px;cursor:pointer}
+  .tut-x:hover{background:rgba(0,0,0,.14)}
+  .tut-art{font-size:58px;line-height:1;margin:4px 0 8px}
+  .tut-card h3{margin:0 0 8px;color:var(--green-dark);font-size:20px}
+  .tut-card p{margin:0 auto;color:var(--ink);font-size:14px;line-height:1.5;max-width:360px;min-height:84px}
+  .tut-card p b{color:var(--green-dark)}
+  .tut-card kbd{background:var(--bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;
+    padding:1px 6px;font-size:12px;font-family:inherit;font-weight:600;color:var(--ink)}
+  .tut-dots{display:flex;gap:6px;justify-content:center;margin:16px 0 14px}
+  .tut-dots span{width:8px;height:8px;border-radius:50%;background:var(--line)}
+  .tut-dots span.on{background:var(--green);transform:scale(1.25)}
+  .tut-foot{display:flex;align-items:center;gap:8px}
+
   /* menú de usuario en el header */
   #user-menu{display:flex;align-items:center;gap:8px;color:#fbf9f1}
   #user-menu[hidden]{display:none}
@@ -234,12 +259,30 @@
   </h1>
   <div class="spacer"></div>
   <div class="hint">Arrastrá las plantas y los tablones al lienzo. El círculo punteado de cada planta es la distancia real que necesita. 1 cuadro = 1&nbsp;m².</div>
+  <button id="btnTutorial" class="hdr-btn" title="Cómo se usa la app">❔ Cómo se usa</button>
   <div id="user-menu" hidden>
     <img id="user-avatar" alt="" />
     <div class="u-info"><span id="user-name"></span></div>
     <button id="btn-logout" title="Cerrar sesión">Salir</button>
   </div>
 </header>
+
+<!-- tutorial / onboarding -->
+<div id="tutorial" hidden>
+  <div class="tut-card">
+    <button class="tut-x" id="tutClose" aria-label="Cerrar">✕</button>
+    <div class="tut-art" id="tutArt"></div>
+    <h3 id="tutTitle"></h3>
+    <p id="tutText"></p>
+    <div class="tut-dots" id="tutDots"></div>
+    <div class="tut-foot">
+      <button class="btn ghost" id="tutSkip">Saltar</button>
+      <div style="flex:1"></div>
+      <button class="btn ghost" id="tutPrev">‹ Anterior</button>
+      <button class="btn" id="tutNext">Siguiente ›</button>
+    </div>
+  </div>
+</div>
 
 <!-- gate de login con Google -->
 <div id="login-gate" hidden>
