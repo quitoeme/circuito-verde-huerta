@@ -7,11 +7,13 @@ App web de un solo archivo (sin instalación, funciona offline) para *estrategiz
 ## ¿Qué hace?
 
 - **Catálogo de 61 plantas** adecuadas a Bariloche / Patagonia cordillerana, con función comestible, repelente de plagas y/o atractora de polinizadores e insectos benéficos.
-- Cada planta tiene un **dibujo estilo lápiz de colores** para reconocerla de un vistazo y un **círculo de distancia** que representa el espacio real que necesita entre planta y planta.
-- **3 listas / filtros:** (1) Todas · (2) Por categoría · (3) Por nombre científico y grupo botánico. Más buscador y filtros por función (🥬 comestible, 🛡️ repele plagas, 🐝 polinizadores, 🐞 benéficos, ⚡ fija nitrógeno, 🏠 invernadero).
-- **Lienzo en blanco a escala** (1 cuadro = 1 m²): arrastrá las plantas que quieras y el círculo punteado te muestra cuánto ocupan. Si dos plantas quedan demasiado juntas, sus círculos se marcan en **rojo**.
-- **Tablones de madera** que arrastrás y redimensionás (ej. 2×1 m) para replicar tus **bancales** reales y medir el espacio de producción.
-- **Resumen del diseño**: total de plantas, especies, bancales y área. Botón **Exportar** a JSON (lista de plantas, cantidades y distancias).
+- Cada planta tiene una **ilustración estilo lápiz de color** (generada con Gemini "Nano Banana", estética consistente) para reconocerla de un vistazo y un **círculo de distancia** que representa el espacio real que necesita entre planta y planta. Si falta una imagen, cae a un dibujo SVG de respaldo.
+- **3 listas / filtros:** (1) Todas · (2) Por categoría · (3) Por nombre científico y grupo botánico. Más buscador, filtros por función (🥬 comestible, 🛡️ repele plagas, 🐝 polinizadores, 🐞 benéficos, ⚡ fija nitrógeno, 🏠 invernadero) y **filtro por temporada** (🌸 Primavera · ☀️ Verano · 🍂 Otoño · ❄️ Invierno).
+- **Botón ＋info** en cada planta: abre una ficha con emparejamiento positivo/negativo (asociación de cultivos), fortalezas, debilidades, riego y tipo de riego, luz, temporada en cantero, método de implantación (siembra directa / trasplante / plantación) y distancia.
+- **Lienzo a escala** (1 cuadro = 1 m²) con el **terreno delimitado** y un margen alrededor para maniobrar. Arrastrá las plantas que quieras; el círculo punteado muestra cuánto ocupan y si dos quedan demasiado juntas se marcan en **rojo**.
+- **Tablones / bancales**: cuadrilátero con relleno blanco y bordes de listones de madera (vista superior), arrastrables y redimensionables (ej. 2×1 m) para replicar tus camas reales.
+- **Selección múltiple** con `Shift + click` (mover o borrar varias a la vez) y **zoom con `Ctrl + rueda`** además de los botones de escala.
+- **Resumen del diseño**: total de plantas, especies, bancales y área. Botón **Exportar** a JSON.
 - Tu diseño se **guarda solo** en el navegador (localStorage).
 
 ## Cómo usar
@@ -36,9 +38,12 @@ Las distancias entre plantas combinan las tablas de INTA con valores hortícolas
 
 | Archivo | Qué contiene |
 |---|---|
-| `index.html` | Estructura y estilos de la app |
-| `plants.js` | Base de datos de las 61 plantas |
-| `app.js` | Dibujos a lápiz, filtros, drag & drop, lienzo y tablones |
+| `index.html` | Estructura, estilos y modal de detalles |
+| `plants.js` | Base de datos de las 61 plantas (nombre, distancia, función, etc.) |
+| `details.js` | Datos para el ＋info: asociación de cultivos, riego, luz, temporada y método |
+| `app.js` | Dibujos SVG de respaldo, filtros, drag & drop, lienzo, tablones, selección y zoom |
+| `img/` | 61 ilustraciones estilo lápiz de color (Nano Banana / Gemini) |
+| `tools/generate_images.py` | Script para (re)generar las imágenes; lee `GEMINI_API_KEY` del entorno |
 
 ---
 

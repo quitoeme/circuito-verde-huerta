@@ -123,6 +123,13 @@ function buildIcon(type,color){
   return `<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
     <g filter="url(#pencil)" stroke-linejoin="round" stroke-linecap="round">${inner}</g></svg>`;
 }
+/* imagen generada (Nano Banana) con respaldo al dibujo SVG si falta/falla */
+function artHTML(p){
+  return `<img class="art-img" src="img/${p.id}.png" alt="${p.nombre}" loading="lazy" draggable="false" onerror="imgFallback(this,'${p.id}')">`;
+}
+window.imgFallback = function(el, id){
+  const p = byId[id]; if(p) el.outerHTML = buildIcon(p.icon, p.color);
+};
 
 /* ---------- iconos de función ---------- */
 const FX = {comestible:"🥬", repele:"🛡️", poliniza:"🐝", benefico:"🐞", nitrogeno:"⚡", cobertura:"🌾"};
@@ -134,9 +141,16 @@ const FX_NAME = {comestible:"Comestible", repele:"Repele plagas", poliniza:"Atra
    ============================================================ */
 const byId = {};
 PLANTS.forEach(p=>byId[p.id]=p);
-let state = {scale:100, terreno:{w:12,h:8}, plants:[], boards:[], nextId:1};
-let view = "todas", activeFx = new Set(), searchTxt = "";
-let selected = null;
+const DET = id => (window.DETAILS||{})[id] || {};   // datos detallados (details.js)
+
+const MARGIN = 1.5;                                 // m de margen alrededor del terreno
+const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+const stageW = ()=>state.terreno.w + 2*MARGIN;      // ancho total del lienzo (m)
+const stageH = ()=>state.terreno.h + 2*MARGIN;
+
+let state = {v:2, scale:100, terreno:{w:12,h:8}, plants:[], boards:[], nextId:1};
+let view = "todas", activeFx = new Set(), activeSeason = new Set(), searchTxt = "";
+let selUids = new Set();                            // selección múltiple (uids)
 
 const $ = s => document.querySelector(s);
 const stage = $("#stage"), stageWrap = $("#stageWrap"), gridC = $("#grid");
@@ -145,19 +159,35 @@ const stage = $("#stage"), stageWrap = $("#stageWrap"), gridC = $("#grid");
 function save(){ try{ localStorage.setItem("circuitoVerde", JSON.stringify(state)); }catch(e){} }
 function load(){
   try{ const s = JSON.parse(localStorage.getItem("circuitoVerde"));
-    if(s && s.plants){ state = Object.assign(state, s); } }catch(e){}
+    if(s && s.plants){
+      state = Object.assign(state, s);
+      if(state.v!==2){   // migrar diseños viejos: el terreno ahora tiene margen
+        state.plants.forEach(p=>{p.x+=MARGIN;p.y+=MARGIN;});
+        state.boards.forEach(b=>{b.x+=MARGIN;b.y+=MARGIN;});
+        state.v=2;
+      }
+    } }catch(e){}
 }
 
 /* ============================================================
    CATÁLOGO (3 vistas)
    ============================================================ */
+const METODO_ABBR = {
+  "Siembra directa":"🌱 Directa", "Trasplante (almácigo)":"🪴 Trasplante",
+  "Directa o trasplante":"🌱 Directa/trasp.", "Plantación (bulbo/diente/tubérculo)":"🧅 Plantación",
+  "División de matas":"🪓 División", "Esqueje/plantín":"🌿 Esqueje"
+};
 function plantCard(p){
+  const d = DET(p.id);
+  const met = d.metodo ? `<div class="met" title="Método de implantación">${METODO_ABBR[d.metodo]||d.metodo}</div>` : "";
   return `<div class="plant" draggable="false" data-id="${p.id}" title="${p.nombre} — ${p.notas}">
-    <div class="art"><div class="ring"></div>${buildIcon(p.icon,p.color)}</div>
+    <div class="art"><div class="ring"></div>${artHTML(p)}</div>
     <div class="nm">${p.nombre}</div>
     <div class="sci">${p.cientifico}</div>
     <div class="dist">⟷ ${p.dist} cm</div>
     <div class="fx">${p.funciones.map(f=>FX[f]||"").join("")}${p.inv?"🏠":""}</div>
+    ${met}
+    <button class="info-btn" data-info="${p.id}">＋ info</button>
   </div>`;
 }
 function passesFilter(p){
@@ -167,11 +197,16 @@ function passesFilter(p){
     if(!hay.includes(searchTxt)) return false;
   }
   if(activeFx.size){
+    let ok=false;
     for(const f of activeFx){
-      if(f==="invernadero"){ if(p.inv) return true; }
-      else if(p.funciones.includes(f)) return true;
+      if(f==="invernadero"){ if(p.inv) ok=true; }
+      else if(p.funciones.includes(f)) ok=true;
     }
-    return false;
+    if(!ok) return false;
+  }
+  if(activeSeason.size){
+    const temps = DET(p.id).temporadas || [];
+    if(![...activeSeason].some(s=>temps.includes(s))) return false;
   }
   return true;
 }
@@ -202,12 +237,17 @@ function renderFilters(){
     return `<span class="chip ${activeFx.has(f)?"active":""}" data-fx="${f}">${lbl}</span>`;
   }).join("");
 }
+const SEASONS = [["Primavera","🌸"],["Verano","☀️"],["Otoño","🍂"],["Invierno","❄️"]];
+function renderSeasonFilter(){
+  $("#seasonFilters").innerHTML = SEASONS.map(([s,emo])=>
+    `<span class="chip season ${activeSeason.has(s)?"active":""}" data-season="${s}">${emo} ${s}</span>`).join("");
+}
 
 /* ============================================================
    LIENZO (grilla, plantas, tablones)
    ============================================================ */
 function applyStageSize(){
-  const W = state.terreno.w*state.scale, H = state.terreno.h*state.scale;
+  const W = stageW()*state.scale, H = stageH()*state.scale;
   stage.style.width = W+"px"; stage.style.height = H+"px";
   gridC.width = W; gridC.height = H;
   drawGrid();
@@ -216,16 +256,29 @@ function applyStageSize(){
 function drawGrid(){
   const ctx = gridC.getContext("2d"), s = state.scale;
   const W = gridC.width, H = gridC.height;
+  const mx = MARGIN*s, my = MARGIN*s;                 // offset del terreno
+  const tw = state.terreno.w*s, th = state.terreno.h*s;
   ctx.clearRect(0,0,W,H);
-  // medios metros
+  // fondo del margen (zona de maniobra) y del terreno
+  ctx.fillStyle = "#eef0e6"; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = "#fcfdf8"; ctx.fillRect(mx,my,tw,th);
+  // grilla de medios metros (solo dentro del terreno)
+  ctx.save(); ctx.beginPath(); ctx.rect(mx,my,tw,th); ctx.clip();
   ctx.strokeStyle = "rgba(63,125,78,.10)"; ctx.lineWidth=1;
-  for(let x=0;x<=W;x+=s/2){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-  for(let y=0;y<=H;y+=s/2){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+  for(let x=mx;x<=mx+tw;x+=s/2){ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+th);ctx.stroke();}
+  for(let y=my;y<=my+th;y+=s/2){ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+tw,y);ctx.stroke();}
   // metros
-  ctx.strokeStyle = "rgba(63,125,78,.28)"; ctx.lineWidth=1.4;
-  ctx.fillStyle="rgba(44,90,57,.5)"; ctx.font="10px Segoe UI";
-  for(let x=0,m=0;x<=W;x+=s,m++){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke(); if(m>0)ctx.fillText(m+" m",x+2,11);}
-  for(let y=0,m=0;y<=H;y+=s,m++){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); if(m>0)ctx.fillText(m+" m",2,y-2);}
+  ctx.strokeStyle = "rgba(63,125,78,.26)"; ctx.lineWidth=1.2;
+  ctx.fillStyle="rgba(44,90,57,.55)"; ctx.font="10px Segoe UI";
+  for(let m=0;m<=state.terreno.w;m++){const x=mx+m*s;ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+th);ctx.stroke(); if(m>0&&m<state.terreno.w)ctx.fillText(m,x+2,my+11);}
+  for(let m=0;m<=state.terreno.h;m++){const y=my+m*s;ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+tw,y);ctx.stroke(); if(m>0&&m<state.terreno.h)ctx.fillText(m,mx+2,y-2);}
+  ctx.restore();
+  // borde del terreno
+  ctx.strokeStyle = "#2c5a39"; ctx.lineWidth=2.5; ctx.setLineDash([9,5]);
+  ctx.strokeRect(mx,my,tw,th); ctx.setLineDash([]);
+  // etiqueta del terreno
+  ctx.fillStyle="#2c5a39"; ctx.font="bold 12px Segoe UI";
+  ctx.fillText(`TERRENO ${state.terreno.w} × ${state.terreno.h} m`, mx+6, my-7>10?my-7:my+16);
 }
 
 function renderStage(){
@@ -249,10 +302,33 @@ function plantEl(inst){
   el.style.left = (inst.x*s)+"px"; el.style.top = (inst.y*s)+"px";
   el.innerHTML = `
     <div class="pring" style="width:${ringPx}px;height:${ringPx}px"></div>
-    <div class="psvg" style="width:${iconPx}px;height:${iconPx}px">${buildIcon(p.icon,p.color)}</div>
+    <div class="psvg" style="width:${iconPx}px;height:${iconPx}px">${artHTML(p)}</div>
     <div class="tag">${p.nombre}</div>`;
   makePlantDraggable(el, inst);
   return el;
+}
+/* frame de listones de madera vistos desde arriba (relleno blanco) */
+function boardFrameInner(W,H){
+  const t = Math.max(7, Math.min(state.scale*0.13, Math.min(W,H)/2 - 3));
+  const ix=t, iy=t, iw=Math.max(0,W-2*t), ih=Math.max(0,H-2*t);
+  return `
+    <path d="M0 0 H${W} V${H} H0 Z M${t} ${t} H${W-t} V${H-t} H${t} Z"
+      fill="url(#woodGrain)" fill-rule="evenodd" stroke="#6e4a25" stroke-width="1.4"/>
+    <line x1="0" y1="0" x2="${t}" y2="${t}" stroke="#5e3f1f" stroke-width="1"/>
+    <line x1="${W}" y1="0" x2="${W-t}" y2="${t}" stroke="#5e3f1f" stroke-width="1"/>
+    <line x1="${W}" y1="${H}" x2="${W-t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
+    <line x1="0" y1="${H}" x2="${t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
+    <rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="#ffffff" stroke="#7a5226" stroke-width="1.2"/>
+    <path d="M${ix} ${iy} H${ix+iw}" stroke="#000" stroke-opacity=".10" stroke-width="2"/>
+    <path d="M${ix} ${iy} V${iy+ih}" stroke="#000" stroke-opacity=".10" stroke-width="2"/>
+    <path d="M0 0 H${W}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
+    <path d="M0 0 V${H}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
+    <path d="M0 ${H} H${W}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>
+    <path d="M${W} 0 V${H}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>`;
+}
+function boardFrameSVG(W,H){
+  return `<svg class="frame" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
+    preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${boardFrameInner(W,H)}</svg>`;
 }
 function boardEl(b){
   const s = state.scale;
@@ -260,8 +336,9 @@ function boardEl(b){
   el.className = "node board"; el.dataset.uid = b.uid;
   el.style.left = (b.x*s)+"px"; el.style.top = (b.y*s)+"px";
   el.innerHTML = `<div class="board-rect" style="width:${b.L*s}px;height:${b.W*s}px">
-      <span class="dim w">${b.L.toFixed(1)} m</span>
-      <span class="dim h">${b.W.toFixed(1)} m</span>
+      ${boardFrameSVG(b.L*s,b.W*s)}
+      <span class="dim h">${b.L.toFixed(1)} m</span>
+      <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="del" title="Quitar tablón">✕</button>
       <span class="handle" title="Redimensionar"></span>
     </div>`;
@@ -273,47 +350,62 @@ function boardEl(b){
   return el;
 }
 
+/* ---------- selección múltiple (shift+click) ---------- */
+function refreshSel(){ stage.querySelectorAll(".node").forEach(n=>n.classList.toggle("sel", selUids.has(n.dataset.uid))); }
+function setSelection(uids){ selUids = new Set(uids); refreshSel(); }
+function toggleSel(uid){ selUids.has(uid)?selUids.delete(uid):selUids.add(uid); refreshSel(); }
+function clearSel(){ if(selUids.size){ selUids.clear(); refreshSel(); } }
+function findItem(uid){
+  let r = state.plants.find(p=>p.uid===uid); if(r) return {type:"plant", ref:r};
+  r = state.boards.find(b=>b.uid===uid); if(r) return {type:"board", ref:r};
+  return null;
+}
+/* arrastre grupal de todo lo seleccionado */
+function startGroupDrag(e, el){
+  const rect = stage.getBoundingClientRect(), s=state.scale;
+  const items = [...selUids].map(uid=>{
+    const it = findItem(uid); if(!it) return null;
+    const node = stage.querySelector(`.node[data-uid="${uid}"]`);
+    return {type:it.type, ref:it.ref, el:node, sx:it.ref.x, sy:it.ref.y};
+  }).filter(Boolean);
+  const startMX=(e.clientX-rect.left)/s, startMY=(e.clientY-rect.top)/s;
+  let moved=false;
+  el.setPointerCapture(e.pointerId);
+  const move=ev=>{
+    moved=true;
+    const dx=(ev.clientX-rect.left)/s-startMX, dy=(ev.clientY-rect.top)/s-startMY;
+    items.forEach(it=>{
+      let nx=it.sx+dx, ny=it.sy+dy;
+      if(it.type==="plant"){ nx=clamp(nx,0,stageW()); ny=clamp(ny,0,stageH()); }
+      else { nx=clamp(nx,0,stageW()-it.ref.L); ny=clamp(ny,0,stageH()-it.ref.W); }
+      it.ref.x=nx; it.ref.y=ny; it.el.style.left=(nx*s)+"px"; it.el.style.top=(ny*s)+"px";
+    });
+    detectOverlaps();
+  };
+  const up=()=>{ el.releasePointerCapture(e.pointerId);
+    el.removeEventListener("pointermove",move); el.removeEventListener("pointerup",up);
+    if(moved){save(); renderStats();} };
+  el.addEventListener("pointermove",move); el.addEventListener("pointerup",up);
+}
 /* ---------- drag de plantas ya colocadas ---------- */
 function makePlantDraggable(el, inst){
-  let moved=false;
   el.addEventListener("pointerdown", e=>{
     if(e.button!==0) return;
-    e.preventDefault(); moved=false;
-    selectNode(el);
-    const rect = stage.getBoundingClientRect(), s=state.scale;
-    const offX = e.clientX - (rect.left + inst.x*s);
-    const offY = e.clientY - (rect.top + inst.y*s);
-    el.setPointerCapture(e.pointerId);
-    const move = ev=>{
-      moved=true;
-      let nx = (ev.clientX - rect.left - offX)/s, ny=(ev.clientY - rect.top - offY)/s;
-      nx = Math.max(0, Math.min(state.terreno.w, nx)); ny=Math.max(0,Math.min(state.terreno.h,ny));
-      inst.x=nx; inst.y=ny; el.style.left=(nx*s)+"px"; el.style.top=(ny*s)+"px";
-      detectOverlaps();
-    };
-    const up = ev=>{ el.releasePointerCapture(e.pointerId);
-      el.removeEventListener("pointermove",move); el.removeEventListener("pointerup",up);
-      if(moved){save(); renderStats();} };
-    el.addEventListener("pointermove",move); el.addEventListener("pointerup",up);
+    e.preventDefault();
+    if(e.shiftKey){ toggleSel(inst.uid); return; }
+    if(!selUids.has(inst.uid)) setSelection([inst.uid]);
+    startGroupDrag(e, el);
   });
-  el.addEventListener("dblclick", ()=>{ state.plants=state.plants.filter(x=>x.uid!==inst.uid); save(); renderStage(); });
+  el.addEventListener("dblclick", ()=>{ state.plants=state.plants.filter(x=>x.uid!==inst.uid); selUids.delete(inst.uid); save(); renderStage(); });
 }
 function makeBoardDraggable(el, b){
   const rectEl = el.querySelector(".board-rect");
   rectEl.addEventListener("pointerdown", e=>{
     if(e.target.classList.contains("handle")||e.target.classList.contains("del")) return;
-    if(e.button!==0) return; e.preventDefault(); selectNode(el);
-    const rect = stage.getBoundingClientRect(), s=state.scale;
-    const offX = e.clientX - (rect.left + b.x*s), offY = e.clientY - (rect.top + b.y*s);
-    el.setPointerCapture(e.pointerId);
-    const move = ev=>{
-      let nx=(ev.clientX-rect.left-offX)/s, ny=(ev.clientY-rect.top-offY)/s;
-      nx=Math.max(0,Math.min(state.terreno.w-b.L,nx)); ny=Math.max(0,Math.min(state.terreno.h-b.W,ny));
-      b.x=nx; b.y=ny; el.style.left=(nx*s)+"px"; el.style.top=(ny*s)+"px";
-    };
-    const up = ()=>{ el.releasePointerCapture(e.pointerId);
-      el.removeEventListener("pointermove",move); el.removeEventListener("pointerup",up); save(); };
-    el.addEventListener("pointermove",move); el.addEventListener("pointerup",up);
+    if(e.button!==0) return; e.preventDefault();
+    if(e.shiftKey){ toggleSel(b.uid); return; }
+    if(!selUids.has(b.uid)) setSelection([b.uid]);
+    startGroupDrag(e, el);
   });
 }
 function makeBoardResizable(handle, rectEl, b){
@@ -324,9 +416,13 @@ function makeBoardResizable(handle, rectEl, b){
     const move=ev=>{
       b.L = Math.max(0.2, +(L0 + (ev.clientX-startX)/s).toFixed(2));
       b.W = Math.max(0.2, +(W0 + (ev.clientY-startY)/s).toFixed(2));
-      rectEl.style.width=(b.L*s)+"px"; rectEl.style.height=(b.W*s)+"px";
-      rectEl.querySelector(".dim.w").textContent=b.L.toFixed(1)+" m";
-      rectEl.querySelector(".dim.h").textContent=b.W.toFixed(1)+" m";
+      const Wpx=b.L*s, Hpx=b.W*s;
+      rectEl.style.width=Wpx+"px"; rectEl.style.height=Hpx+"px";
+      const svg=rectEl.querySelector("svg.frame");
+      svg.setAttribute("width",Wpx); svg.setAttribute("height",Hpx);
+      svg.setAttribute("viewBox",`0 0 ${Wpx} ${Hpx}`); svg.innerHTML=boardFrameInner(Wpx,Hpx);
+      rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
+      rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
     };
     const up=()=>{ handle.releasePointerCapture(e.pointerId);
       handle.removeEventListener("pointermove",move); handle.removeEventListener("pointerup",up);
@@ -334,11 +430,6 @@ function makeBoardResizable(handle, rectEl, b){
     handle.addEventListener("pointermove",move); handle.addEventListener("pointerup",up);
   });
 }
-function selectNode(el){
-  if(selected) selected.classList.remove("sel");
-  selected = el; el.classList.add("sel");
-}
-
 /* ---------- solapamiento (plantas muy juntas) ---------- */
 function detectOverlaps(){
   const nodes = state.plants.map(inst=>({inst, p:byId[inst.id]}));
@@ -374,7 +465,7 @@ function renderStats(){
 const ghost = $("#ghost");
 function startCatalogDrag(plantId, e){
   const p = byId[plantId];
-  ghost.innerHTML = buildIcon(p.icon,p.color);
+  ghost.innerHTML = artHTML(p);
   ghost.style.display="block"; moveGhost(e);
   const move = ev=>moveGhost(ev);
   const up = ev=>{
@@ -384,8 +475,7 @@ function startCatalogDrag(plantId, e){
     const r = stageWrap.getBoundingClientRect();
     if(ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom){
       const sr = stage.getBoundingClientRect(), s=state.scale;
-      let x=(ev.clientX-sr.left)/s, y=(ev.clientY-sr.top)/s;
-      x=Math.max(0,Math.min(state.terreno.w,x)); y=Math.max(0,Math.min(state.terreno.h,y));
+      let x=clamp((ev.clientX-sr.left)/s,0,stageW()), y=clamp((ev.clientY-sr.top)/s,0,stageH());
       state.plants.push({uid:"p"+(state.nextId++), id:plantId, x:+x.toFixed(3), y:+y.toFixed(3)});
       save(); renderStage();
     }
@@ -394,6 +484,45 @@ function startCatalogDrag(plantId, e){
   document.addEventListener("pointerup",up);
 }
 function moveGhost(e){ ghost.style.left=e.clientX+"px"; ghost.style.top=e.clientY+"px"; }
+
+/* ============================================================
+   MODAL DE DETALLES (+ info)
+   ============================================================ */
+function fnBadges(p){
+  return p.funciones.map(f=>`<span>${FX[f]} ${FX_NAME[f]}</span>`).join("") + (p.inv?`<span>🏠 Invernadero</span>`:"");
+}
+function openInfo(id){
+  const p = byId[id]; if(!p) return; const d = DET(id);
+  const cell=(t,v)=> v?`<div class="m-cell"><h5>${t}</h5><div class="v">${v}</div></div>`:"";
+  const pills=(arr)=> (arr&&arr.length)?arr.map(x=>`<span class="pill">${x}</span>`).join("")
+    :`<span class="v" style="color:var(--ink-soft)">Sin restricciones conocidas</span>`;
+  $("#modalBody").innerHTML = `
+    <div class="m-head">
+      <div class="m-art">${artHTML(p)}</div>
+      <div>
+        <h3>${p.nombre}</h3>
+        <div class="m-sci">${p.cientifico} · ${p.familia}</div>
+        <div class="m-tags">${fnBadges(p)}</div>
+      </div>
+    </div>
+    <div class="m-grid">
+      <div class="m-cell pos full"><h5>🤝 Emparejamiento positivo</h5><div>${pills(d.compaPos)}</div></div>
+      <div class="m-cell neg full"><h5>🚫 Emparejamiento negativo</h5><div>${pills(d.compaNeg)}</div></div>
+      ${cell("☀️ Luz", d.luz)}
+      ${cell("💧 Riego", d.riego ? `<b>${d.riego}</b> — ${d.riegoTipo||""}` : "")}
+      ${cell("🗓️ Temporada en cantero", (d.temporadas||[]).join(" · "))}
+      ${cell("🌱 Método recomendado", d.metodo)}
+      ${cell("📅 Época de siembra", p.siembra)}
+      ${cell("📏 Distancia entre plantas", p.dist+" cm")}
+      ${cell("💪 Fortalezas", d.fortalezas)}
+      ${cell("⚠️ Debilidades", d.debilidades)}
+      ${cell("🌡️ ¿Invernadero en Bariloche?", p.inv?"Sí — conviene bajo cubierta":"No es imprescindible")}
+      <div class="m-cell full"><h5>📝 Nota</h5><div class="v">${p.notas}</div></div>
+    </div>
+    <div class="m-foot">Datos orientativos para huerta patagónica (criterio agroecológico tipo INTA/ProHuerta). Verificá contra la cartilla de tu zona.</div>`;
+  $("#modal").hidden = false;
+}
+function closeInfo(){ $("#modal").hidden = true; }
 
 /* ============================================================
    EVENTOS
@@ -412,18 +541,43 @@ function bind(){
     const f=chip.dataset.fx; activeFx.has(f)?activeFx.delete(f):activeFx.add(f);
     renderFilters(); renderCatalog();
   });
-  // arrastrar del catálogo
+  // filtro de temporada
+  $("#seasonFilters").addEventListener("click",e=>{
+    const chip=e.target.closest(".chip"); if(!chip) return;
+    const s=chip.dataset.season; activeSeason.has(s)?activeSeason.delete(s):activeSeason.add(s);
+    renderSeasonFilter(); renderCatalog();
+  });
+  // botón + info
+  $("#catalog").addEventListener("click",e=>{
+    const ib=e.target.closest(".info-btn"); if(ib){ openInfo(ib.dataset.info); }
+  });
+  // cerrar modal
+  $("#modalClose").addEventListener("click",closeInfo);
+  $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeInfo(); });
+  // arrastrar del catálogo (el botón +info no arrastra)
   $("#catalog").addEventListener("pointerdown",e=>{
+    if(e.target.closest(".info-btn")) return;
     const card=e.target.closest(".plant"); if(!card) return;
     e.preventDefault(); startCatalogDrag(card.dataset.id, e);
   });
-  // zoom
-  $("#zoomIn").addEventListener("click",()=>{ state.scale=Math.min(220,state.scale+20); save(); renderStage(); });
+  // zoom (botones)
+  $("#zoomIn").addEventListener("click",()=>{ state.scale=Math.min(240,state.scale+20); save(); renderStage(); });
   $("#zoomOut").addEventListener("click",()=>{ state.scale=Math.max(40,state.scale-20); save(); renderStage(); });
+  // zoom con ctrl + rueda (hacia el cursor)
+  stageWrap.addEventListener("wheel",e=>{
+    if(!e.ctrlKey) return;
+    e.preventDefault();
+    const old=state.scale, ns=clamp(old+(e.deltaY<0?15:-15),40,240);
+    if(ns===old) return;
+    const r=stageWrap.getBoundingClientRect();
+    const cx=e.clientX-r.left+stageWrap.scrollLeft, cy=e.clientY-r.top+stageWrap.scrollTop;
+    const k=ns/old; state.scale=ns; save(); renderStage();
+    stageWrap.scrollLeft=cx*k-(e.clientX-r.left); stageWrap.scrollTop=cy*k-(e.clientY-r.top);
+  },{passive:false});
   // tablón
   $("#addBoard").addEventListener("click",()=>{
     const L=Math.max(0.2,+$("#bL").value||2), W=Math.max(0.2,+$("#bW").value||1);
-    state.boards.push({uid:"b"+(state.nextId++), x:0.5, y:0.5, L:+L, W:+W});
+    state.boards.push({uid:"b"+(state.nextId++), x:MARGIN+0.3, y:MARGIN+0.3, L:+L, W:+W});
     save(); renderStage();
   });
   // terreno
@@ -439,17 +593,18 @@ function bind(){
   });
   // exportar
   $("#exportBtn").addEventListener("click",exportDesign);
-  // borrar seleccionado con tecla
+  // borrar seleccionado/s con tecla (Supr/Backspace)
   document.addEventListener("keydown",e=>{
-    if((e.key==="Delete"||e.key==="Backspace") && selected){
-      const uid=selected.dataset.uid;
-      state.plants=state.plants.filter(x=>x.uid!==uid);
-      state.boards=state.boards.filter(x=>x.uid!==uid);
-      selected=null; save(); renderStage();
+    if(e.key==="Escape"){ closeInfo(); return; }
+    if((e.key==="Delete"||e.key==="Backspace") && selUids.size){
+      const t=document.activeElement; if(t && /INPUT|TEXTAREA/.test(t.tagName)) return;
+      state.plants=state.plants.filter(x=>!selUids.has(x.uid));
+      state.boards=state.boards.filter(x=>!selUids.has(x.uid));
+      selUids.clear(); save(); renderStage();
     }
   });
   // click en vacío deselecciona
-  stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ if(selected){selected.classList.remove("sel");selected=null;} }});
+  stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ clearSel(); }});
 }
 
 function exportDesign(){
@@ -478,6 +633,6 @@ function exportDesign(){
 function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
-  renderFilters(); renderCatalog(); bind(); renderStage();
+  renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage();
 }
 document.addEventListener("DOMContentLoaded",init);
