@@ -667,10 +667,18 @@ function bind(){
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
   });
-  // arrastrar del catálogo (el botón +info no arrastra)
+  // arrastrar del catálogo (mouse) / tocar para colocar (touch)
   $("#catalog").addEventListener("pointerdown",e=>{
     if(e.target.closest(".info-btn")) return;
     const card=e.target.closest(".plant"); if(!card) return;
+    if(e.pointerType==="touch"){
+      // en touch: tap = colocar (permitimos scroll del listado si arrastra el dedo)
+      const sx=e.clientX, sy=e.clientY, id=card.dataset.id;
+      const up=ev=>{ document.removeEventListener("pointerup",up);
+        if(Math.hypot(ev.clientX-sx, ev.clientY-sy) < 12) placeAtVisibleCenter(id); };
+      document.addEventListener("pointerup",up);
+      return;
+    }
     e.preventDefault(); startCatalogDrag(card.dataset.id, e);
   });
   // zoom (botones)
@@ -704,7 +712,9 @@ function bind(){
   $("#undoBtn").addEventListener("click",undo);
   $("#delSel").addEventListener("click",deleteSelection);
   // catálogo colapsable
-  $("#catToggle").addEventListener("click",()=>document.body.classList.toggle("cat-collapsed"));
+  $("#catToggle").addEventListener("click",toggleCatalog);
+  const cb=$("#catBackdrop"); if(cb) cb.addEventListener("click",closeCatalog);
+  const cc=$("#catClose"); if(cc) cc.addEventListener("click",closeCatalog);
   // aviso de orientación
   const rd=$("#rotDismiss"); if(rd) rd.addEventListener("click",()=>$("#rotate-hint").classList.add("dismissed"));
   // vaciar
@@ -738,13 +748,28 @@ function bind(){
   $("#tutNext").addEventListener("click",tutNext);
   $("#tutPrev").addEventListener("click",tutPrev);
   $("#tutorial").addEventListener("click",e=>{ if(e.target.id==="tutorial") closeTutorial(); });
-  // borrar seleccionado/s con tecla (Supr/Backspace)
+  // ---------- atajos de teclado ----------
   document.addEventListener("keydown",e=>{
     if(e.key==="Escape"){ closeInfo(); if(!$("#tutorial").hidden) closeTutorial(); return; }
-    const t=document.activeElement, typing = t && /INPUT|TEXTAREA/.test(t.tagName);
-    if((e.key==="Delete"||e.key==="Backspace") && selUids.size && !typing){ deleteSelection(); }
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z" && !typing){ e.preventDefault(); undo(); }
-    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="d" && selUids.size && !typing){ e.preventDefault(); duplicateSelection(); }
+    const t=document.activeElement, typing = t && /INPUT|TEXTAREA|SELECT/.test(t.tagName);
+    if(typing) return;
+    if(!$("#modal").hidden) return;                 // no interferir con un modal abierto
+    const cmd = e.ctrlKey || e.metaKey;
+    const k = e.key.toLowerCase();
+    if((e.key==="Delete"||e.key==="Backspace") && selUids.size){ e.preventDefault(); deleteSelection(); return; }
+    if(cmd && k==="z"){ e.preventDefault(); undo(); return; }
+    if(cmd && k==="d" && selUids.size){ e.preventDefault(); duplicateSelection(); return; }
+    if(cmd && k==="c"){ e.preventDefault(); copySelection(); return; }
+    if(cmd && k==="x"){ e.preventDefault(); copySelection(); deleteSelection(); return; }
+    if(cmd && k==="v"){ e.preventDefault(); pasteClipboard(); return; }
+    if(cmd && k==="a"){ e.preventDefault(); selectAll(); return; }
+    if(cmd && k==="s"){ e.preventDefault(); saveProject(); return; }
+    if(e.key.startsWith("Arrow") && selUids.size){
+      e.preventDefault();
+      const step = snapOn ? SNAP : 0.1;
+      nudge((e.key==="ArrowLeft"?-step:e.key==="ArrowRight"?step:0),
+            (e.key==="ArrowUp"?-step:e.key==="ArrowDown"?step:0));
+    }
   });
   // click en vacío deselecciona
   stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ clearSel(); }});
@@ -793,6 +818,44 @@ function duplicateSelection(){
     news.push(c.uid);
   });
   setSelection(news); save(); renderStage();
+}
+
+/* ---- copiar / cortar / pegar / seleccionar todo / mover ---- */
+let clipboard=[], lastNudge=0;
+function copySelection(){
+  clipboard = [...selUids].map(uid=>{ const it=findItem(uid); return it?{type:it.type, data:Object.assign({},it.ref)}:null; }).filter(Boolean);
+}
+function pasteClipboard(){
+  if(!clipboard.length) return;
+  pushUndo(); const news=[];
+  clipboard.forEach(c=>{
+    const o=Object.assign({},c.data);
+    o.uid=(c.type==="plant"?"p":"b")+(state.nextId++);
+    o.x=clamp((o.x||0)+0.4,0,stageW()); o.y=clamp((o.y||0)+0.4,0,stageH());
+    if(c.type==="plant") state.plants.push(o); else state.boards.push(o);
+    news.push(o.uid);
+  });
+  setSelection(news); save(); renderStage();
+}
+function selectAll(){ setSelection([...state.plants.map(p=>p.uid), ...state.boards.map(b=>b.uid)]); }
+function nudge(dx,dy){
+  if(!selUids.size || (!dx && !dy)) return;
+  const now=Date.now(); if(now-lastNudge>500) pushUndo(); lastNudge=now;
+  [...selUids].forEach(uid=>{ const it=findItem(uid); if(!it) return;
+    const maxX=stageW()-(it.type==="board"?it.ref.L:0), maxY=stageH()-(it.type==="board"?it.ref.W:0);
+    it.ref.x=clamp(+(it.ref.x+dx).toFixed(3),0,maxX); it.ref.y=clamp(+(it.ref.y+dy).toFixed(3),0,maxY);
+  });
+  save(); renderStage();
+}
+/* colocar en el centro visible (tap-to-place en mobile) */
+function placeAtVisibleCenter(id){
+  const s=state.scale;
+  const cx=(stageWrap.scrollLeft + Math.min(stageWrap.clientWidth, stage.offsetWidth)/2)/s;
+  const cy=(stageWrap.scrollTop  + Math.min(stageWrap.clientHeight, stage.offsetHeight)/2)/s;
+  pushUndo();
+  state.plants.push({uid:"p"+(state.nextId++), id, x:clamp(snapVal(cx),0,stageW()), y:clamp(snapVal(cy),0,stageH())});
+  save(); renderStage();
+  if(window.innerWidth<880) closeCatalog();
 }
 
 /* ---- proyectos guardados ---- */
@@ -972,8 +1035,8 @@ const TUTORIAL = [
    text:"Elegí <b>largo y ancho</b> (ej. 2×1 m) y tocá <b>+ Tablón</b>. Es un cuadrilátero con borde de madera y <b>relleno blanco</b> para ver bien las plantas. Movelo y redimensionalo desde la esquina ⬛."},
   {art:"🗺️", title:"Tu terreno con margen",
    text:"El recuadro punteado verde es tu <b>terreno</b> (cambiá las medidas y tocá <b>Aplicar</b>). Alrededor hay un <b>margen</b> para acomodar plantas y jugar con la zona antes de meterlas al cantero."},
-  {art:"🖐️", title:"Seleccionar, mover y zoom",
-   text:"<kbd>Shift</kbd> + clic selecciona <b>varias</b> plantas/bancales para moverlos o borrarlos juntos. <kbd>Ctrl</kbd> + rueda hace <b>zoom</b>. Doble clic borra una planta; <kbd>Supr</kbd> borra lo seleccionado."},
+  {art:"⌨️", title:"Selección y atajos",
+   text:"<kbd>Shift</kbd>+clic selecciona <b>varias</b>; <kbd>Ctrl</kbd>+<kbd>A</kbd> todas. Copiá/pegá con <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd>, cortá con <kbd>Ctrl</kbd>+<kbd>X</kbd>, duplicá con <kbd>Ctrl</kbd>+<kbd>D</kbd>, movés con las <b>flechas</b>, deshacés con <kbd>Ctrl</kbd>+<kbd>Z</kbd> y guardás con <kbd>Ctrl</kbd>+<kbd>S</kbd>. <kbd>Ctrl</kbd>+rueda = zoom. En celular: <b>tocá</b> una planta para colocarla."},
   {art:"💾", title:"Se guarda solo · Exportar",
    text:"Tu diseño se <b>guarda automáticamente</b> en este navegador. <b>Exportar</b> baja un JSON con plantas, cantidades y bancales. <b>Vaciar</b> limpia todo. ¡A diseñar tu huerta! 🌻"},
 ];
@@ -1035,6 +1098,10 @@ function doLogout(){
   saveSession(null); renderUserChip(); setSyncUI("hidden"); requireLogin();
 }
 
+/* ---------- catálogo (drawer en mobile) ---------- */
+function closeCatalog(){ document.body.classList.add("cat-collapsed"); }
+function toggleCatalog(){ document.body.classList.toggle("cat-collapsed"); }
+
 /* ============================================================
    SYNC A LA NUBE (Vercel KV vía /api/data) — por usuario
    ============================================================ */
@@ -1085,7 +1152,7 @@ window.addEventListener("offline", ()=>setSyncUI("offline"));
 function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
-  if(window.innerWidth < 880) document.body.classList.add("cat-collapsed");
+  if(window.innerWidth < 880){ document.body.classList.add("cat-collapsed"); $("#stats").classList.add("collapsed"); }
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage(); renderProjSelect();
   if(loginRequired() && !sessionValid()){ requireLogin(); }
   else { renderUserChip(); maybeAutoTutorial(); if(sessionValid()) syncNow(); }

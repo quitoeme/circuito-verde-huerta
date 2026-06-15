@@ -306,34 +306,39 @@
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
 
-  /* ---------- catálogo colapsable ---------- */
-  aside{transition:margin-left .2s ease}
+  /* ---------- catálogo colapsable / drawer ---------- */
   #catToggle{font-size:15px;padding:7px 11px}
+  .panel-head h2{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  #catClose{display:none;border:0;background:transparent;color:var(--ink-soft);font-size:17px;cursor:pointer;line-height:1}
+  #catBackdrop{display:none}
   body.cat-collapsed aside{display:none}
+  #rotate-hint{display:none!important}
 
-  /* ---------- responsive / horizontal ---------- */
-  #rotate-hint{display:none}
+  /* ---------- responsive / mobile ---------- */
   @media (max-width:1100px){
-    aside{width:300px;min-width:260px}
+    aside{width:300px;min-width:240px}
     header .hint{display:none}
   }
   @media (max-width:880px){
-    header h1{font-size:15px} header h1 small{display:none}
-    aside{position:absolute;z-index:60;height:calc(100% - 0px);box-shadow:6px 0 24px rgba(0,0,0,.25)}
-    body:not(.cat-collapsed) aside{margin-left:0}
-    /* en pantallas chicas el catálogo arranca colapsado para dar lugar al lienzo */
+    header h1 small{display:none}
+    aside{position:fixed;left:0;top:0;bottom:0;height:auto;width:86vw;max-width:340px;z-index:70;
+      box-shadow:6px 0 28px rgba(0,0,0,.32)}
+    #catClose{display:inline-block}
+    body:not(.cat-collapsed) #catBackdrop{display:block;position:fixed;inset:0;background:rgba(34,43,37,.45);z-index:65}
   }
-  /* vertical angosto: sugerir horizontal */
-  @media (max-width:760px) and (orientation:portrait){
-    #rotate-hint{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;
-      background:linear-gradient(135deg,var(--green-dark),var(--green));padding:24px;text-align:center}
-    #rotate-hint.dismissed{display:none}
-    .rot-card{background:var(--paper);border-radius:18px;padding:30px 26px;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
-    .rot-emoji{font-size:52px;animation:rot 2.4s ease-in-out infinite}
-    .rot-card h2{margin:10px 0 6px;color:var(--green-dark)}
-    .rot-card p{font-size:14px;color:var(--ink);line-height:1.5;margin:0 0 18px}
+  @media (max-width:760px){
+    header{flex-wrap:wrap;gap:6px 10px;padding:8px 12px}
+    header h1{font-size:15px}
+    header .logo{font-size:22px}
+    .hdr-btn{padding:5px 8px;font-size:11px}
+    .toolbar{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+    .toolbar > *{flex:0 0 auto}
+    .toolbar .spacer{display:none}
+    .stats{right:8px;bottom:8px;min-width:0;max-width:74vw}
+    .del-sel{left:8px;top:8px;padding:6px 9px;font-size:11px}
+    .modal{max-height:92vh}
+    .m-grid{grid-template-columns:1fr}
   }
-  @keyframes rot{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
 </style>
 </head>
 <body>
@@ -394,9 +399,10 @@
 
 <main>
   <!-- CATALOGO -->
+  <div id="catBackdrop"></div>
   <aside>
     <div class="panel-head">
-      <h2>Catálogo de plantas</h2>
+      <h2>Catálogo de plantas <button id="catClose" aria-label="Cerrar catálogo">✕</button></h2>
       <div class="tabs">
         <button data-view="todas" class="active">1 · Todas</button>
         <button data-view="categoria">2 · Por categoría</button>
