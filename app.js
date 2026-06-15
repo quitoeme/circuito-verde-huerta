@@ -328,15 +328,16 @@ function renderStage(){
 function plantEl(inst){
   const p = byId[inst.id]; if(!p) return document.createElement("div");
   const s = state.scale;
-  const ringPx = (p.dist/100)*s;                 // diámetro real
-  const iconPx = Math.max(24, Math.min(ringPx*0.66, 64));
+  const ringPx = (p.dist/100)*s;                 // diámetro real (distancia)
+  const iconPx = Math.max(14, Math.min(ringPx, 72));  // el ícono nunca supera el círculo
+  const showTag = iconPx >= 30;                  // ocultar nombre cuando es chico
   const el = document.createElement("div");
   el.className = "node plant-node"; el.dataset.uid = inst.uid;
   el.style.left = (inst.x*s)+"px"; el.style.top = (inst.y*s)+"px";
   el.innerHTML = `
     <div class="pring" style="width:${ringPx}px;height:${ringPx}px"></div>
     <div class="psvg" style="width:${iconPx}px;height:${iconPx}px">${artHTML(p)}</div>
-    <div class="tag">${p.nombre}</div>`;
+    ${showTag?`<div class="tag">${p.nombre}</div>`:""}`;
   makePlantDraggable(el, inst);
   return el;
 }
@@ -372,12 +373,15 @@ function boardEl(b){
       ${boardFrameSVG(b.L*s,b.W*s)}
       <span class="dim h">${b.L.toFixed(1)} m</span>
       <span class="dim w">${b.W.toFixed(1)} m</span>
-      <button class="del" title="Quitar tablón">✕</button>
+      <button class="rot" title="Rotar 90°">⟳</button>
+      <button class="del" title="Quitar bancal">✕</button>
       <span class="handle" title="Redimensionar"></span>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".del").addEventListener("click",e=>{
     e.stopPropagation(); pushUndo(); state.boards = state.boards.filter(x=>x.uid!==b.uid); save(); renderStage();});
+  el.querySelector(".rot").addEventListener("pointerdown",e=>{e.stopPropagation();});
+  el.querySelector(".rot").addEventListener("click",e=>{ e.stopPropagation(); rotateBoard(b); });
   makeBoardDraggable(el, b);
   makeBoardResizable(el.querySelector(".handle"), el.querySelector(".board-rect"), b);
   return el;
@@ -430,6 +434,27 @@ function startGroupDrag(e, el){
     if(moved){ pushUndo(pre); save(); renderStats(); } };
   document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
 }
+/* ---------- rotar bancal 90° CW (con las plantas de adentro) ---------- */
+function rotateBoard(b){
+  pushUndo();
+  const oldL=b.L, oldW=b.W, cx=b.x+oldL/2, cy=b.y+oldW/2, e=0.001;
+  // plantas dentro del bancal (centro contenido)
+  const rel = state.plants
+    .filter(pl=> pl.x>=b.x-e && pl.x<=b.x+oldL+e && pl.y>=b.y-e && pl.y<=b.y+oldW+e)
+    .map(pl=>({pl, rx:pl.x-b.x, ry:pl.y-b.y}));
+  // nuevas dimensiones (intercambia) y origen rotando alrededor del centro
+  const newL=oldW, newW=oldL;
+  const nbx=clamp(cx-newL/2, 0, Math.max(0,stageW()-newL));
+  const nby=clamp(cy-newW/2, 0, Math.max(0,stageH()-newW));
+  b.L=newL; b.W=newW; b.x=nbx; b.y=nby;
+  // 90° horario: (rx,ry) -> (oldW-ry, rx)
+  rel.forEach(({pl,rx,ry})=>{
+    pl.x=clamp(nbx + (oldW-ry), 0, stageW());
+    pl.y=clamp(nby + rx,        0, stageH());
+  });
+  save(); renderStage();
+}
+
 /* ---------- drag de plantas ya colocadas ---------- */
 function makePlantDraggable(el, inst){
   el.addEventListener("pointerdown", e=>{
