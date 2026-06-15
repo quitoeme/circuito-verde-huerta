@@ -174,7 +174,8 @@ const $ = s => document.querySelector(s);
 const stage = $("#stage"), stageWrap = $("#stageWrap"), gridC = $("#grid");
 
 /* ---------- persistencia ---------- */
-function save(){ try{ localStorage.setItem("circuitoVerde", JSON.stringify(state)); }catch(e){} }
+function saveLocal(){ try{ localStorage.setItem("circuitoVerde", JSON.stringify(state)); }catch(e){} }
+function save(){ saveLocal(); scheduleSync(); }
 function load(){
   try{ const s = JSON.parse(localStorage.getItem("circuitoVerde"));
     if(s && s.plants){
@@ -997,7 +998,7 @@ function onGoogleCredential(resp){
   onAuthenticated();
 }
 function requireLogin(){ $("#login-gate").hidden=false; $("#user-menu").hidden=true; initGoogle(); }
-function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); maybeAutoTutorial(); }
+function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); maybeAutoTutorial(); syncNow(); }
 function renderUserChip(){
   if(!loginRequired()||!session){ $("#user-menu").hidden=true; return; }
   $("#user-avatar").src = session.picture || "img/lechuga.png";
@@ -1006,8 +1007,52 @@ function renderUserChip(){
 }
 function doLogout(){
   if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
-  saveSession(null); renderUserChip(); requireLogin();
+  saveSession(null); renderUserChip(); setSyncUI("hidden"); requireLogin();
 }
+
+/* ============================================================
+   SYNC A LA NUBE (Vercel KV vía /api/data) — por usuario
+   ============================================================ */
+const API_URL = "/api/data";
+let syncing=false, cloudTimer=null;
+function authHeaders(extra){ extra=extra||{}; return (session&&session.token)?Object.assign({Authorization:"Bearer "+session.token},extra):extra; }
+function setSyncUI(st){
+  const el=$("#cloud"); if(!el) return;
+  if(!loginRequired() || !session || st==="hidden"){ el.hidden=true; return; }
+  el.hidden=false; el.className="cloud is-"+st;
+  el.textContent = {saving:"☁ Guardando…", synced:"☁ Guardado", pending:"☁ Cambios sin subir…",
+    offline:"☁ Sin conexión", error:"☁ Sin sincronizar", auth:"☁ Iniciá sesión"}[st] || "";
+}
+function scheduleSync(){
+  if(!loginRequired() || !sessionValid()) return;
+  setSyncUI("pending"); clearTimeout(cloudTimer); cloudTimer=setTimeout(syncNow, 1500);
+}
+async function syncNow(){
+  if(!loginRequired() || !sessionValid()){ return; }
+  if(syncing) return;
+  if(!navigator.onLine){ setSyncUI("offline"); return; }
+  syncing=true; setSyncUI("saving");
+  try{
+    const g=await fetch(API_URL,{cache:"no-store",headers:authHeaders()});
+    if(g.status===401){ setSyncUI("auth"); return; }
+    if(g.ok){
+      const remote=await g.json();
+      if(remote && Array.isArray(remote.plants) && (remote.savedAt||"") > (state.savedAt||"")){
+        state.plants=remote.plants; state.boards=remote.boards||[];
+        state.terreno=remote.terreno||state.terreno; state.scale=remote.scale||state.scale;
+        state.nextId=remote.nextId||state.nextId; state.savedAt=remote.savedAt;
+        $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h; saveLocal(); renderStage();
+      }
+    }
+    const p=await fetch(API_URL,{method:"PUT",headers:authHeaders({"Content-Type":"application/json"}),body:JSON.stringify(state)});
+    if(p.status===401){ setSyncUI("auth"); return; }
+    if(p.ok){ const r=await p.json(); state.savedAt=r.savedAt; saveLocal(); setSyncUI("synced"); }
+    else setSyncUI("error");
+  }catch(e){ setSyncUI(navigator.onLine?"error":"offline"); }
+  finally{ syncing=false; }
+}
+window.addEventListener("online", ()=>{ if(loginRequired()&&sessionValid()) syncNow(); });
+window.addEventListener("offline", ()=>setSyncUI("offline"));
 
 /* ============================================================
    INICIO
@@ -1018,6 +1063,6 @@ function init(){
   if(window.innerWidth < 880) document.body.classList.add("cat-collapsed");
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage(); renderProjSelect();
   if(loginRequired() && !sessionValid()){ requireLogin(); }
-  else { renderUserChip(); maybeAutoTutorial(); }
+  else { renderUserChip(); maybeAutoTutorial(); if(sessionValid()) syncNow(); }
 }
 document.addEventListener("DOMContentLoaded",init);

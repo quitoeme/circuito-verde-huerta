@@ -269,6 +269,14 @@
   .tut-dots span.on{background:var(--green);transform:scale(1.25)}
   .tut-foot{display:flex;align-items:center;gap:8px}
 
+  /* indicador de nube */
+  .cloud{font-size:11px;font-weight:600;color:#fbf9f1;background:rgba(255,255,255,.15);
+    border:1px solid rgba(255,255,255,.35);border-radius:8px;padding:4px 9px;white-space:nowrap}
+  .cloud[hidden]{display:none}
+  .cloud.is-saving{opacity:.8}
+  .cloud.is-error,.cloud.is-auth{background:rgba(192,81,47,.35);border-color:rgba(255,255,255,.4)}
+  .cloud.is-offline{background:rgba(0,0,0,.2)}
+
   /* menú de usuario en el header */
   #user-menu{display:flex;align-items:center;gap:8px;color:#fbf9f1}
   #user-menu[hidden]{display:none}
@@ -333,6 +341,7 @@
   <div class="spacer"></div>
   <div class="hint">Arrastrá las plantas y los tablones al lienzo. El círculo punteado de cada planta es la distancia real que necesita. 1 cuadro = 1&nbsp;m².</div>
   <button id="btnTutorial" class="hdr-btn" title="Cómo se usa la app">❔ Cómo se usa</button>
+  <span id="cloud" class="cloud" hidden></span>
   <div id="user-menu" hidden>
     <img id="user-avatar" alt="" />
     <div class="u-info"><span id="user-name"></span></div>
