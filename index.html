@@ -122,6 +122,9 @@
   .m-cell.neg{background:#fbece7;border-color:#e6c3b6}
   .m-cell .pill{display:inline-block;font-size:11.5px;background:#fff;border:1px solid var(--line);
     border-radius:6px;padding:1px 7px;margin:2px 4px 0 0}
+  .m-cell button.pill.goto{cursor:pointer;font:inherit;font-size:11.5px;color:var(--green-dark);
+    text-decoration:underline dotted;text-underline-offset:2px}
+  .m-cell button.pill.goto:hover{background:var(--green);color:#fff;border-color:var(--green)}
   .m-cell.pos .pill{border-color:#9fcea3}
   .m-foot{padding:0 18px 18px;font-size:11px;color:var(--ink-soft)}
 
@@ -164,6 +167,12 @@
   .node .tag{position:absolute;left:50%;top:100%;transform:translateX(-50%);
     font-size:10px;font-weight:600;color:var(--green-dark);background:rgba(251,249,241,.85);
     padding:0 4px;border-radius:4px;white-space:nowrap;margin-top:2px;pointer-events:none}
+  .node .nbadge{position:absolute;left:calc(50% + 12px);top:calc(50% - 22px);width:18px;height:18px;
+    background:#d0432a;color:#fff;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;
+    box-shadow:0 1px 4px rgba(0,0,0,.3);z-index:3;cursor:help}
+  .node.goodneighbor .pring{border-color:#2f9e44;background:rgba(47,158,68,.12)}
+  .node.badneighbor .psvg{filter:drop-shadow(0 0 4px rgba(208,67,42,.7))}
+  .stats .row.conflict b{color:#c0432a}
   .node.sel .psvg{filter:drop-shadow(0 0 0 #e08a2b)}
   .node.sel::after{content:"";position:absolute;inset:-6px;border:2px dotted var(--accent);border-radius:8px;pointer-events:none}
 
@@ -199,6 +208,11 @@
   .stats .row b{color:var(--ink)}
   .stats .mini{margin-top:6px;max-height:120px;overflow:auto}
   .stats .mini div{display:flex;justify-content:space-between;font-size:11px;padding:1px 0}
+
+  .del-sel{position:absolute;left:14px;top:14px;z-index:9;border:0;border-radius:9px;padding:7px 12px;
+    font-size:12px;font-weight:600;cursor:pointer;background:#c0512f;color:#fff;box-shadow:var(--shadow)}
+  .del-sel:hover{background:#9d3f23}
+  .del-sel[hidden]{display:none}
 
   .empty-hint{position:absolute;left:50%;top:42%;transform:translate(-50%,-50%);text-align:center;
     color:var(--ink-soft);pointer-events:none}
@@ -255,6 +269,35 @@
   #login-error[hidden]{display:none}
   ::-webkit-scrollbar{width:10px;height:10px}
   ::-webkit-scrollbar-thumb{background:var(--line);border-radius:6px}
+
+  /* ---------- catálogo colapsable ---------- */
+  aside{transition:margin-left .2s ease}
+  #catToggle{font-size:15px;padding:7px 11px}
+  body.cat-collapsed aside{display:none}
+
+  /* ---------- responsive / horizontal ---------- */
+  #rotate-hint{display:none}
+  @media (max-width:1100px){
+    aside{width:300px;min-width:260px}
+    header .hint{display:none}
+  }
+  @media (max-width:880px){
+    header h1{font-size:15px} header h1 small{display:none}
+    aside{position:absolute;z-index:60;height:calc(100% - 0px);box-shadow:6px 0 24px rgba(0,0,0,.25)}
+    body:not(.cat-collapsed) aside{margin-left:0}
+    /* en pantallas chicas el catálogo arranca colapsado para dar lugar al lienzo */
+  }
+  /* vertical angosto: sugerir horizontal */
+  @media (max-width:760px) and (orientation:portrait){
+    #rotate-hint{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;
+      background:linear-gradient(135deg,var(--green-dark),var(--green));padding:24px;text-align:center}
+    #rotate-hint.dismissed{display:none}
+    .rot-card{background:var(--paper);border-radius:18px;padding:30px 26px;max-width:340px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+    .rot-emoji{font-size:52px;animation:rot 2.4s ease-in-out infinite}
+    .rot-card h2{margin:10px 0 6px;color:var(--green-dark)}
+    .rot-card p{font-size:14px;color:var(--ink);line-height:1.5;margin:0 0 18px}
+  }
+  @keyframes rot{0%,40%{transform:rotate(0)}60%,100%{transform:rotate(90deg)}}
 </style>
 </head>
 <body>
@@ -272,6 +315,16 @@
     <button id="btn-logout" title="Cerrar sesión">Salir</button>
   </div>
 </header>
+
+<!-- aviso de orientación (vertical angosto) -->
+<div id="rotate-hint">
+  <div class="rot-card">
+    <div class="rot-emoji">📱↻</div>
+    <h2>Mejor en horizontal</h2>
+    <p>Circuito Verde es un planificador visual: necesita pantalla ancha. <b>Girá el dispositivo</b> a horizontal para diseñar cómodo.</p>
+    <button class="btn" id="rotDismiss">Usar igual</button>
+  </div>
+</div>
 
 <!-- tutorial / onboarding -->
 <div id="tutorial" hidden>
@@ -330,6 +383,7 @@
   <!-- PLANIFICADOR -->
   <section class="planner">
     <div class="toolbar">
+      <button class="btn ghost" id="catToggle" title="Mostrar/ocultar catálogo">☰</button>
       <div class="group">
         <label>Escala</label>
         <button class="btn ghost" id="zoomOut">−</button>
@@ -349,11 +403,13 @@
         <button class="btn ghost" id="setTerreno">Aplicar</button>
       </div>
       <div class="spacer" style="flex:1"></div>
+      <button class="btn ghost" id="undoBtn" title="Deshacer (Ctrl+Z)" disabled>↶ Deshacer</button>
       <button class="btn ghost" id="exportBtn">Exportar</button>
       <button class="btn danger" id="clearBtn">Vaciar</button>
     </div>
 
     <div class="stage-wrap" id="stageWrap">
+      <button id="delSel" class="del-sel" hidden>🗑 Borrar selección</button>
       <div id="stage">
         <canvas id="grid"></canvas>
         <div class="empty-hint" id="emptyHint">
@@ -368,6 +424,7 @@
           <div class="row"><span>Especies</span><b id="stSpecies">0</b></div>
           <div class="row"><span>Bancales</span><b id="stBoards">0</b></div>
           <div class="row"><span>Área bancales</span><b id="stArea">0 m²</b></div>
+          <div class="row conflict" id="stConflictRow" hidden><span>⚠️ Malas vecinas</span><b id="stConflict">0</b></div>
           <div class="mini" id="stMini"></div>
         </div>
       </div>

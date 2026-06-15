@@ -143,6 +143,24 @@ const byId = {};
 PLANTS.forEach(p=>byId[p.id]=p);
 const DET = id => (window.DETAILS||{})[id] || {};   // datos detallados (details.js)
 
+/* ---------- mapeo de nombres de compañeras ---------- */
+const NAME_MAP = { "poroto":"chaucha", "calabaza":"zapallo", "tagetes":"tagete", "copete":"tagete" };
+function plantBaseName(x){ return (typeof x==="string"?x:x.nombre).toLowerCase().split(" (")[0].trim(); }
+function findPlantByName(name){
+  const n = name.toLowerCase().trim();
+  if(NAME_MAP[n]) return byId[NAME_MAP[n]];
+  return PLANTS.find(p=>{ const b=plantBaseName(p); return b===n || b.includes(n) || n.includes(b); }) || null;
+}
+function neighborRelation(idA, idB){   // 'bad' | 'good' | null
+  if(idA===idB) return null;
+  const A=byId[idA], B=byId[idB]; if(!A||!B) return null;
+  const da=DET(idA), db=DET(idB), nA=plantBaseName(A), nB=plantBaseName(B);
+  const inList=(list,name)=>(list||[]).some(x=>{const xl=x.toLowerCase().trim(); return xl===name||xl.includes(name)||name.includes(xl);});
+  if(inList(da.compaNeg,nB) || inList(db.compaNeg,nA)) return "bad";
+  if(inList(da.compaPos,nB) || inList(db.compaPos,nA)) return "good";
+  return null;
+}
+
 const MARGIN = 1.5;                                 // m de margen alrededor del terreno
 const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
 const stageW = ()=>state.terreno.w + 2*MARGIN;      // ancho total del lienzo (m)
@@ -168,6 +186,19 @@ function load(){
       }
     } }catch(e){}
 }
+
+/* ---------- historial (deshacer) ---------- */
+let undoStack = [];
+function snapshot(){ return JSON.stringify({plants:state.plants, boards:state.boards, terreno:state.terreno, nextId:state.nextId}); }
+function pushUndo(snap){ undoStack.push(snap||snapshot()); if(undoStack.length>50) undoStack.shift(); updateUndoBtn(); }
+function undo(){
+  if(!undoStack.length) return;
+  const o = JSON.parse(undoStack.pop());
+  state.plants=o.plants; state.boards=o.boards; state.terreno=o.terreno; state.nextId=o.nextId;
+  $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
+  selUids.clear(); save(); renderStage(); updateUndoBtn();
+}
+function updateUndoBtn(){ const b=$("#undoBtn"); if(b) b.disabled = undoStack.length===0; }
 
 /* ============================================================
    CATÁLOGO (3 vistas)
@@ -290,6 +321,7 @@ function renderStage(){
   $("#emptyHint").style.display = (state.plants.length||state.boards.length)?"none":"block";
   detectOverlaps();
   renderStats();
+  refreshSel();
 }
 
 function plantEl(inst){
@@ -344,14 +376,24 @@ function boardEl(b){
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".del").addEventListener("click",e=>{
-    e.stopPropagation(); state.boards = state.boards.filter(x=>x.uid!==b.uid); save(); renderStage();});
+    e.stopPropagation(); pushUndo(); state.boards = state.boards.filter(x=>x.uid!==b.uid); save(); renderStage();});
   makeBoardDraggable(el, b);
   makeBoardResizable(el.querySelector(".handle"), el.querySelector(".board-rect"), b);
   return el;
 }
 
 /* ---------- selección múltiple (shift+click) ---------- */
-function refreshSel(){ stage.querySelectorAll(".node").forEach(n=>n.classList.toggle("sel", selUids.has(n.dataset.uid))); }
+function refreshSel(){
+  stage.querySelectorAll(".node").forEach(n=>n.classList.toggle("sel", selUids.has(n.dataset.uid)));
+  const d=$("#delSel"); if(d){ d.hidden = selUids.size===0; d.textContent = `🗑 Borrar selección (${selUids.size})`; }
+}
+function deleteSelection(){
+  if(!selUids.size) return;
+  pushUndo();
+  state.plants=state.plants.filter(x=>!selUids.has(x.uid));
+  state.boards=state.boards.filter(x=>!selUids.has(x.uid));
+  selUids.clear(); save(); renderStage();
+}
 function setSelection(uids){ selUids = new Set(uids); refreshSel(); }
 function toggleSel(uid){ selUids.has(uid)?selUids.delete(uid):selUids.add(uid); refreshSel(); }
 function clearSel(){ if(selUids.size){ selUids.clear(); refreshSel(); } }
@@ -369,7 +411,7 @@ function startGroupDrag(e, el){
     return {type:it.type, ref:it.ref, el:node, sx:it.ref.x, sy:it.ref.y};
   }).filter(Boolean);
   const startMX=(e.clientX-rect.left)/s, startMY=(e.clientY-rect.top)/s;
-  let moved=false;
+  let moved=false; const pre=snapshot();
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
   const move=ev=>{
     moved=true;
@@ -384,7 +426,7 @@ function startGroupDrag(e, el){
   };
   const up=()=>{ try{ el.releasePointerCapture(e.pointerId); }catch(_){}
     document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up);
-    if(moved){save(); renderStats();} };
+    if(moved){ pushUndo(pre); save(); renderStats(); } };
   document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
 }
 /* ---------- drag de plantas ya colocadas ---------- */
@@ -396,7 +438,7 @@ function makePlantDraggable(el, inst){
     if(!selUids.has(inst.uid)) setSelection([inst.uid]);
     startGroupDrag(e, el);
   });
-  el.addEventListener("dblclick", ()=>{ state.plants=state.plants.filter(x=>x.uid!==inst.uid); selUids.delete(inst.uid); save(); renderStage(); });
+  el.addEventListener("dblclick", ()=>{ pushUndo(); state.plants=state.plants.filter(x=>x.uid!==inst.uid); selUids.delete(inst.uid); save(); renderStage(); });
 }
 function makeBoardDraggable(el, b){
   const rectEl = el.querySelector(".board-rect");
@@ -411,7 +453,7 @@ function makeBoardDraggable(el, b){
 function makeBoardResizable(handle, rectEl, b){
   handle.addEventListener("pointerdown", e=>{
     e.preventDefault(); e.stopPropagation();
-    const s=state.scale; const startX=e.clientX, startY=e.clientY, L0=b.L, W0=b.W;
+    const s=state.scale; const startX=e.clientX, startY=e.clientY, L0=b.L, W0=b.W; const pre=snapshot();
     try{ handle.setPointerCapture(e.pointerId); }catch(_){}
     const move=ev=>{
       b.L = Math.max(0.2, +(L0 + (ev.clientX-startX)/s).toFixed(2));
@@ -424,10 +466,12 @@ function makeBoardResizable(handle, rectEl, b){
       rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
       rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
     };
+    let didResize=false; const move0=move;
     const up=()=>{ try{ handle.releasePointerCapture(e.pointerId); }catch(_){}
-      document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up);
-      save(); renderStats(); };
-    document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
+      document.removeEventListener("pointermove",moveWrap); document.removeEventListener("pointerup",up);
+      if(didResize) pushUndo(pre); save(); renderStats(); };
+    const moveWrap=ev=>{ didResize=true; move0(ev); };
+    document.addEventListener("pointermove",moveWrap); document.addEventListener("pointerup",up);
   });
 }
 /* ---------- solapamiento (plantas muy juntas) ---------- */
@@ -444,6 +488,35 @@ function detectOverlaps(){
   stage.querySelectorAll(".plant-node").forEach(el=>{
     el.classList.toggle("overlap", flags.has(el.dataset.uid));
   });
+  detectNeighbors();
+}
+
+/* ---------- vecindad: buenas / malas compañeras cercanas ---------- */
+function detectNeighbors(){
+  const arr = state.plants.map(i=>({i, p:byId[i.id]})).filter(x=>x.p);
+  const conflict = {}, good = {};
+  for(let a=0;a<arr.length;a++) for(let b=a+1;b<arr.length;b++){
+    const A=arr[a], B=arr[b];
+    const d=Math.hypot(A.i.x-B.i.x, A.i.y-B.i.y);
+    const rA=A.p.dist/200, rB=B.p.dist/200;        // radios en m
+    if(d > rA+rB+0.5) continue;                    // no son vecinas cercanas
+    const rel = neighborRelation(A.i.id, B.i.id);
+    if(rel==="bad"){
+      (conflict[A.i.uid]=conflict[A.i.uid]||[]).push(B.p.nombre);
+      (conflict[B.i.uid]=conflict[B.i.uid]||[]).push(A.p.nombre);
+    } else if(rel==="good"){ good[A.i.uid]=true; good[B.i.uid]=true; }
+  }
+  state._conflicts = conflict;
+  stage.querySelectorAll(".plant-node").forEach(el=>{
+    const c = conflict[el.dataset.uid];
+    el.classList.toggle("badneighbor", !!c);
+    el.classList.toggle("goodneighbor", !c && !!good[el.dataset.uid]);
+    let badge = el.querySelector(".nbadge");
+    if(c){
+      if(!badge){ badge=document.createElement("div"); badge.className="nbadge"; el.appendChild(badge); }
+      badge.textContent="⚠"; badge.title="Mala compañera cerca: "+[...new Set(c)].join(", ");
+    } else if(badge){ badge.remove(); }
+  });
 }
 
 /* ---------- estadísticas ---------- */
@@ -455,6 +528,8 @@ function renderStats(){
   $("#stBoards").textContent = state.boards.length;
   const area = state.boards.reduce((s,b)=>s+b.L*b.W,0);
   $("#stArea").textContent = area.toFixed(2)+" m²";
+  const nConf = Object.keys(state._conflicts||{}).length;
+  const cr=$("#stConflictRow"); if(cr){ cr.hidden = nConf===0; $("#stConflict").textContent = nConf; }
   $("#stMini").innerHTML = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])
     .map(id=>`<div><span>${byId[id]?byId[id].nombre:id}</span><b>${counts[id]}</b></div>`).join("");
 }
@@ -476,6 +551,7 @@ function startCatalogDrag(plantId, e){
     if(ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom){
       const sr = stage.getBoundingClientRect(), s=state.scale;
       let x=clamp((ev.clientX-sr.left)/s,0,stageW()), y=clamp((ev.clientY-sr.top)/s,0,stageH());
+      pushUndo();
       state.plants.push({uid:"p"+(state.nextId++), id:plantId, x:+x.toFixed(3), y:+y.toFixed(3)});
       save(); renderStage();
     }
@@ -494,7 +570,10 @@ function fnBadges(p){
 function openInfo(id){
   const p = byId[id]; if(!p) return; const d = DET(id);
   const cell=(t,v)=> v?`<div class="m-cell"><h5>${t}</h5><div class="v">${v}</div></div>`:"";
-  const pills=(arr)=> (arr&&arr.length)?arr.map(x=>`<span class="pill">${x}</span>`).join("")
+  const pills=(arr)=> (arr&&arr.length)?arr.map(x=>{
+      const m=findPlantByName(x);
+      return m ? `<button class="pill goto" data-goto="${m.id}">${x}</button>` : `<span class="pill">${x}</span>`;
+    }).join("")
     :`<span class="v" style="color:var(--ink-soft)">Sin restricciones conocidas</span>`;
   $("#modalBody").innerHTML = `
     <div class="m-head">
@@ -554,6 +633,8 @@ function bind(){
   // cerrar modal
   $("#modalClose").addEventListener("click",closeInfo);
   $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeInfo(); });
+  // compañera clickeable -> abre su ficha
+  $("#modalBody").addEventListener("click",e=>{ const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto); });
   // arrastrar del catálogo (el botón +info no arrastra)
   $("#catalog").addEventListener("pointerdown",e=>{
     if(e.target.closest(".info-btn")) return;
@@ -577,18 +658,27 @@ function bind(){
   // tablón
   $("#addBoard").addEventListener("click",()=>{
     const L=Math.max(0.2,+$("#bL").value||2), W=Math.max(0.2,+$("#bW").value||1);
+    pushUndo();
     state.boards.push({uid:"b"+(state.nextId++), x:MARGIN+0.3, y:MARGIN+0.3, L:+L, W:+W});
     save(); renderStage();
   });
   // terreno
   $("#setTerreno").addEventListener("click",()=>{
+    pushUndo();
     state.terreno.w=Math.max(2,+$("#tW").value||12); state.terreno.h=Math.max(2,+$("#tH").value||8);
     save(); renderStage();
   });
+  // deshacer y borrar selección
+  $("#undoBtn").addEventListener("click",undo);
+  $("#delSel").addEventListener("click",deleteSelection);
+  // catálogo colapsable
+  $("#catToggle").addEventListener("click",()=>document.body.classList.toggle("cat-collapsed"));
+  // aviso de orientación
+  const rd=$("#rotDismiss"); if(rd) rd.addEventListener("click",()=>$("#rotate-hint").classList.add("dismissed"));
   // vaciar
   $("#clearBtn").addEventListener("click",()=>{
     if(confirm("¿Vaciar todo el diseño? Esto borra plantas y tablones.")){
-      state.plants=[]; state.boards=[]; save(); renderStage();
+      pushUndo(); state.plants=[]; state.boards=[]; selUids.clear(); save(); renderStage();
     }
   });
   // exportar
@@ -607,12 +697,9 @@ function bind(){
   // borrar seleccionado/s con tecla (Supr/Backspace)
   document.addEventListener("keydown",e=>{
     if(e.key==="Escape"){ closeInfo(); if(!$("#tutorial").hidden) closeTutorial(); return; }
-    if((e.key==="Delete"||e.key==="Backspace") && selUids.size){
-      const t=document.activeElement; if(t && /INPUT|TEXTAREA/.test(t.tagName)) return;
-      state.plants=state.plants.filter(x=>!selUids.has(x.uid));
-      state.boards=state.boards.filter(x=>!selUids.has(x.uid));
-      selUids.clear(); save(); renderStage();
-    }
+    const t=document.activeElement, typing = t && /INPUT|TEXTAREA/.test(t.tagName);
+    if((e.key==="Delete"||e.key==="Backspace") && selUids.size && !typing){ deleteSelection(); }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z" && !typing){ e.preventDefault(); undo(); }
   });
   // click en vacío deselecciona
   stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ clearSel(); }});
@@ -726,6 +813,7 @@ function doLogout(){
 function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
+  if(window.innerWidth < 880) document.body.classList.add("cat-collapsed");
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage();
   if(loginRequired() && !sessionValid()){ requireLogin(); }
   else { renderUserChip(); maybeAutoTutorial(); }
