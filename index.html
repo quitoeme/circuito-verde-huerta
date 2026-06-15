@@ -127,6 +127,30 @@
   .m-cell button.pill.goto:hover{background:var(--green);color:#fff;border-color:var(--green)}
   .m-cell.pos .pill{border-color:#9fcea3}
   .m-foot{padding:0 18px 18px;font-size:11px;color:var(--ink-soft)}
+  /* análisis */
+  .asec{margin:16px 0 7px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--green-dark)}
+  .abar{display:flex;align-items:center;gap:8px;font-size:12px;margin:3px 0}
+  .abar span{flex:0 0 130px;color:var(--ink-soft)}
+  .abar .atrack{flex:1;height:9px;background:var(--bg);border-radius:5px;overflow:hidden}
+  .abar .atrack>div{height:100%;background:var(--green)}
+  .abar b{flex:0 0 34px;text-align:right}
+  .afx{display:flex;flex-wrap:wrap;gap:6px}
+  .afx span{background:var(--bg);border:1px solid var(--line);border-radius:20px;padding:3px 9px;font-size:12px}
+  .atable{border-collapse:collapse;width:100%;margin-top:4px}
+  .atable td,.atable th{border:1px solid var(--line);padding:4px 9px;font-size:12.5px;text-align:left}
+  .atable th{background:var(--green-soft);color:var(--green-dark)}
+  .warn-box{background:#fbece7;border:1px solid #e6c3b6;border-radius:9px;padding:8px 11px;font-size:12.5px;margin:6px 0;color:#8a3b22}
+  .ok-box{background:#eaf4ea;border:1px solid #bcdcbf;border-radius:9px;padding:8px 11px;font-size:12.5px;margin:6px 0;color:#2c5a39}
+  /* calendario */
+  .cal-months{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px}
+  .cal-m{border:1px solid var(--line);background:var(--bg);border-radius:7px;padding:5px 9px;font-size:12px;cursor:pointer;font-weight:600;color:var(--ink-soft)}
+  .cal-m.on{background:var(--green);color:#fff;border-color:var(--green)}
+  .cal-list{display:flex;flex-wrap:wrap;gap:5px}
+  .cal-chip{border:1px solid var(--line);border-radius:7px;padding:3px 9px;font-size:12px;cursor:pointer;background:#fff;color:var(--ink)}
+  .cal-chip.s{border-color:#9fcea3;background:#eef6ee}
+  .cal-chip.c{border-color:#e8c98a;background:#fcf3e2}
+  .cal-chip:hover{filter:brightness(.95)}
+  .cal-empty{font-size:12px;color:var(--ink-soft)}
 
   .legend{padding:8px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink-soft);background:var(--paper)}
   .legend span{margin-right:10px;white-space:nowrap}
@@ -389,6 +413,7 @@
         <button class="btn ghost" id="zoomOut">−</button>
         <span id="scaleLbl" style="font-size:11px;min-width:74px;text-align:center">100 px/m</span>
         <button class="btn ghost" id="zoomIn">+</button>
+        <label style="margin-left:6px"><input type="checkbox" id="snapChk"/> imán</label>
       </div>
       <div class="group">
         <label>Bancal (tablón) m</label>
@@ -402,9 +427,24 @@
         <input type="number" id="tH" value="8" step="1" min="2"/>
         <button class="btn ghost" id="setTerreno">Aplicar</button>
       </div>
+      <div class="group">
+        <label>Proyecto</label>
+        <select id="projSelect" title="Cargar proyecto"></select>
+        <button class="btn ghost" id="projSave" title="Guardar proyecto">💾</button>
+        <button class="btn ghost" id="projNew" title="Nuevo / vaciar">🆕</button>
+        <button class="btn ghost" id="projImport" title="Importar JSON">📁</button>
+        <input type="file" id="projFile" accept="application/json,.json" hidden/>
+      </div>
+      <button class="btn ghost" id="calBtn" title="Calendario de siembra">📅 Calendario</button>
       <div class="spacer" style="flex:1"></div>
-      <button class="btn ghost" id="undoBtn" title="Deshacer (Ctrl+Z)" disabled>↶ Deshacer</button>
-      <button class="btn ghost" id="exportBtn">Exportar</button>
+      <button class="btn ghost" id="undoBtn" title="Deshacer (Ctrl+Z)" disabled>↶</button>
+      <button class="btn ghost" id="analysisBtn" title="Análisis del diseño">📊 Análisis</button>
+      <div class="group" style="gap:4px">
+        <label>Exportar</label>
+        <button class="btn ghost" id="exportBtn" title="Descargar JSON">JSON</button>
+        <button class="btn ghost" id="pngBtn" title="Descargar imagen PNG">🖼 PNG</button>
+        <button class="btn ghost" id="printBtn" title="Imprimir / PDF">🖨</button>
+      </div>
       <button class="btn danger" id="clearBtn">Vaciar</button>
     </div>
 
@@ -461,6 +501,7 @@
 <script src="config.js"></script>
 <script src="plants.js"></script>
 <script src="details.js"></script>
+<script src="details-extra.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

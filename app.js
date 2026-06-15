@@ -417,7 +417,7 @@ function startGroupDrag(e, el){
     moved=true;
     const dx=(ev.clientX-rect.left)/s-startMX, dy=(ev.clientY-rect.top)/s-startMY;
     items.forEach(it=>{
-      let nx=it.sx+dx, ny=it.sy+dy;
+      let nx=snapVal(it.sx+dx), ny=snapVal(it.sy+dy);
       if(it.type==="plant"){ nx=clamp(nx,0,stageW()); ny=clamp(ny,0,stageH()); }
       else { nx=clamp(nx,0,stageW()-it.ref.L); ny=clamp(ny,0,stageH()-it.ref.W); }
       it.ref.x=nx; it.ref.y=ny; it.el.style.left=(nx*s)+"px"; it.el.style.top=(ny*s)+"px";
@@ -550,7 +550,7 @@ function startCatalogDrag(plantId, e){
     const r = stageWrap.getBoundingClientRect();
     if(ev.clientX>=r.left && ev.clientX<=r.right && ev.clientY>=r.top && ev.clientY<=r.bottom){
       const sr = stage.getBoundingClientRect(), s=state.scale;
-      let x=clamp((ev.clientX-sr.left)/s,0,stageW()), y=clamp((ev.clientY-sr.top)/s,0,stageH());
+      let x=clamp(snapVal((ev.clientX-sr.left)/s),0,stageW()), y=clamp(snapVal((ev.clientY-sr.top)/s),0,stageH());
       pushUndo();
       state.plants.push({uid:"p"+(state.nextId++), id:plantId, x:+x.toFixed(3), y:+y.toFixed(3)});
       save(); renderStage();
@@ -593,6 +593,9 @@ function openInfo(id){
       ${cell("🌱 Método recomendado", d.metodo)}
       ${cell("📅 Época de siembra", p.siembra)}
       ${cell("📏 Distancia entre plantas", p.dist+" cm")}
+      ${cell("❄️ Tolerancia a heladas", d.heladas)}
+      ${cell("⏱️ Días a cosecha", d.diasCosecha?("~"+d.diasCosecha+" días"):"")}
+      ${cell("📐 Altura aprox.", d.alturaCm?(d.alturaCm+" cm"):"")}
       ${cell("💪 Fortalezas", d.fortalezas)}
       ${cell("⚠️ Debilidades", d.debilidades)}
       ${cell("🌡️ ¿Invernadero en Bariloche?", p.inv?"Sí — conviene bajo cubierta":"No es imprescindible")}
@@ -633,8 +636,11 @@ function bind(){
   // cerrar modal
   $("#modalClose").addEventListener("click",closeInfo);
   $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeInfo(); });
-  // compañera clickeable -> abre su ficha
-  $("#modalBody").addEventListener("click",e=>{ const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto); });
+  // modal: mes del calendario y compañera/planta clickeable
+  $("#modalBody").addEventListener("click",e=>{
+    const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
+  });
   // arrastrar del catálogo (el botón +info no arrastra)
   $("#catalog").addEventListener("pointerdown",e=>{
     if(e.target.closest(".info-btn")) return;
@@ -681,8 +687,20 @@ function bind(){
       pushUndo(); state.plants=[]; state.boards=[]; selUids.clear(); save(); renderStage();
     }
   });
-  // exportar
+  // exportar / análisis / calendario
   $("#exportBtn").addEventListener("click",exportDesign);
+  $("#pngBtn").addEventListener("click",downloadPNG);
+  $("#printBtn").addEventListener("click",printDesign);
+  $("#analysisBtn").addEventListener("click",openAnalysis);
+  $("#calBtn").addEventListener("click",openCalendar);
+  // snap
+  $("#snapChk").addEventListener("change",e=>{ snapOn=e.target.checked; });
+  // proyectos
+  $("#projSave").addEventListener("click",saveProject);
+  $("#projNew").addEventListener("click",newProject);
+  $("#projImport").addEventListener("click",()=>$("#projFile").click());
+  $("#projFile").addEventListener("change",e=>{ if(e.target.files[0]) importJSON(e.target.files[0]); e.target.value=""; });
+  $("#projSelect").addEventListener("change",e=>{ const n=e.target.value; if(n) loadProject(n); else setCurProj(""); });
   // logout
   $("#btn-logout").addEventListener("click",doLogout);
   // plegar resumen
@@ -700,6 +718,7 @@ function bind(){
     const t=document.activeElement, typing = t && /INPUT|TEXTAREA/.test(t.tagName);
     if((e.key==="Delete"||e.key==="Backspace") && selUids.size && !typing){ deleteSelection(); }
     if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="z" && !typing){ e.preventDefault(); undo(); }
+    if((e.ctrlKey||e.metaKey) && e.key.toLowerCase()==="d" && selUids.size && !typing){ e.preventDefault(); duplicateSelection(); }
   });
   // click en vacío deselecciona
   stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ clearSel(); }});
@@ -723,6 +742,189 @@ function exportDesign(){
   const blob = new Blob([JSON.stringify(resumen,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
   a.download="circuito-verde-diseno.json"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+/* ============================================================
+   HERRAMIENTAS: snap, duplicar, proyectos, PNG, imprimir, análisis, calendario
+   ============================================================ */
+function showModal(html){ $("#modalBody").innerHTML = html; $("#modal").hidden = false; }
+
+/* ---- snap a la grilla ---- */
+let snapOn = false;
+const SNAP = 0.25; // m
+const snapVal = v => snapOn ? Math.round(v/SNAP)*SNAP : v;
+
+/* ---- duplicar selección ---- */
+function duplicateSelection(){
+  if(!selUids.size) return;
+  pushUndo();
+  const news=[];
+  [...selUids].forEach(uid=>{
+    const it=findItem(uid); if(!it) return;
+    const c=Object.assign({}, it.ref);
+    c.uid=(it.type==="plant"?"p":"b")+(state.nextId++); c.x=clamp(it.ref.x+0.3,0,stageW()); c.y=clamp(it.ref.y+0.3,0,stageH());
+    if(it.type==="plant") state.plants.push(c); else state.boards.push(c);
+    news.push(c.uid);
+  });
+  setSelection(news); save(); renderStage();
+}
+
+/* ---- proyectos guardados ---- */
+const PROJ_KEY="circuitoVerde.projects", CUR_KEY="circuitoVerde.current";
+function getProjects(){ try{ return JSON.parse(localStorage.getItem(PROJ_KEY))||{}; }catch(e){ return {}; } }
+function setProjects(o){ try{ localStorage.setItem(PROJ_KEY, JSON.stringify(o)); }catch(e){} }
+function curProj(){ try{ return localStorage.getItem(CUR_KEY)||""; }catch(e){ return ""; } }
+function setCurProj(n){ try{ n?localStorage.setItem(CUR_KEY,n):localStorage.removeItem(CUR_KEY); }catch(e){} }
+function renderProjSelect(){
+  const sel=$("#projSelect"); if(!sel) return;
+  const ps=getProjects(), cur=curProj();
+  sel.innerHTML = `<option value="">— sin guardar —</option>` +
+    Object.keys(ps).sort().map(n=>`<option value="${n}" ${n===cur?"selected":""}>${n}</option>`).join("");
+}
+function saveProject(){
+  const name=(prompt("Nombre del proyecto:", curProj()||"Mi huerta")||"").trim();
+  if(!name) return;
+  const ps=getProjects(); ps[name]=snapshot(); setProjects(ps); setCurProj(name); renderProjSelect();
+  alert(`Proyecto "${name}" guardado.`);
+}
+function loadProject(name){
+  const ps=getProjects(); if(!ps[name]) return;
+  pushUndo();
+  const o=JSON.parse(ps[name]);
+  state.plants=o.plants||[]; state.boards=o.boards||[]; state.terreno=o.terreno||state.terreno; state.nextId=o.nextId||1;
+  setCurProj(name); $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
+  selUids.clear(); save(); renderStage();
+}
+function newProject(){
+  if(!confirm("¿Empezar un diseño nuevo? (lo no guardado se pierde)")) return;
+  pushUndo(); state.plants=[]; state.boards=[]; selUids.clear(); setCurProj(""); renderProjSelect(); save(); renderStage();
+}
+function importJSON(file){
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    const d=JSON.parse(r.result); const o=d.layout||d;
+    if(!o || !Array.isArray(o.plants)) throw 0;
+    pushUndo();
+    state.plants=o.plants; state.boards=o.boards||[]; state.terreno=o.terreno||state.terreno;
+    state.scale=o.scale||state.scale; state.nextId=o.nextId||1000;
+    $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h; selUids.clear(); save(); renderStage();
+    alert("Diseño importado.");
+  }catch(e){ alert("No pude leer ese archivo. Tiene que ser un JSON exportado por Circuito Verde."); } };
+  r.readAsText(file);
+}
+
+/* ---- exportar PNG del plano ---- */
+function exportPNG(){
+  const s=state.scale, W=stageW()*s, H=stageH()*s;
+  const c=document.createElement("canvas"); c.width=W; c.height=H;
+  const ctx=c.getContext("2d");
+  const mx=MARGIN*s, my=MARGIN*s, tw=state.terreno.w*s, th=state.terreno.h*s;
+  ctx.fillStyle="#eef0e6"; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="#fcfdf8"; ctx.fillRect(mx,my,tw,th);
+  ctx.strokeStyle="rgba(63,125,78,.22)"; ctx.lineWidth=1;
+  for(let m=0;m<=state.terreno.w;m++){const x=mx+m*s;ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+th);ctx.stroke();}
+  for(let m=0;m<=state.terreno.h;m++){const y=my+m*s;ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+tw,y);ctx.stroke();}
+  ctx.setLineDash([9,5]); ctx.strokeStyle="#2c5a39"; ctx.lineWidth=2.5; ctx.strokeRect(mx,my,tw,th); ctx.setLineDash([]);
+  ctx.fillStyle="#2c5a39"; ctx.font="bold 13px Segoe UI";
+  ctx.fillText(`Terreno ${state.terreno.w} × ${state.terreno.h} m`, mx+6, my-7>12?my-7:my+16);
+  state.boards.forEach(b=>{
+    const x=b.x*s,y=b.y*s,bw=b.L*s,bh=b.W*s, t=Math.max(7,Math.min(s*0.13,Math.min(bw,bh)/2-3));
+    ctx.fillStyle="#b5824e"; ctx.fillRect(x,y,bw,bh);
+    ctx.fillStyle="#ffffff"; ctx.fillRect(x+t,y+t,Math.max(0,bw-2*t),Math.max(0,bh-2*t));
+    ctx.strokeStyle="#6e4a25"; ctx.lineWidth=2; ctx.strokeRect(x,y,bw,bh);
+    ctx.fillStyle="#fff"; ctx.font="bold 11px Segoe UI"; ctx.textAlign="center";
+    ctx.fillText(b.L.toFixed(1)+" m", x+bw/2, y+13); ctx.textAlign="left";
+  });
+  state.plants.forEach(inst=>{
+    const p=byId[inst.id]; if(!p) return;
+    const cx=inst.x*s, cy=inst.y*s, r=(p.dist/200)*s;
+    ctx.setLineDash([5,4]); ctx.strokeStyle="rgba(63,125,78,.8)"; ctx.lineWidth=1.4;
+    ctx.beginPath(); ctx.arc(cx,cy,Math.max(6,r),0,2*Math.PI); ctx.stroke(); ctx.setLineDash([]);
+    const node=stage.querySelector(`.node[data-uid="${inst.uid}"]`), img=node&&node.querySelector("img.art-img");
+    const isz=Math.max(22,Math.min(r*1.3,58));
+    if(img && img.complete && img.naturalWidth){ try{ ctx.drawImage(img,cx-isz/2,cy-isz/2,isz,isz); }catch(e){} }
+    else { ctx.fillStyle=p.color; ctx.beginPath(); ctx.arc(cx,cy,isz/2,0,2*Math.PI); ctx.fill(); }
+    ctx.fillStyle="#2c5a39"; ctx.font="600 10px Segoe UI"; ctx.textAlign="center";
+    ctx.fillText(p.nombre, cx, cy+isz/2+11); ctx.textAlign="left";
+  });
+  return c;
+}
+function downloadPNG(){
+  try{
+    const url=exportPNG().toDataURL("image/png");
+    const a=document.createElement("a"); a.href=url; a.download="circuito-verde-plano.png"; a.click();
+  }catch(e){ alert("No pude generar el PNG (puede pasar al abrir el archivo localmente). Probá la versión online."); }
+}
+function printDesign(){
+  let url=null; try{ url=exportPNG().toDataURL("image/png"); }catch(e){}
+  const w=window.open("","_blank"); if(!w){ alert("Permití las ventanas emergentes para imprimir."); return; }
+  const counts={}; state.plants.forEach(i=>counts[i.id]=(counts[i.id]||0)+1);
+  const rows=Object.keys(counts).sort().map(id=>`<tr><td>${byId[id]?byId[id].nombre:id}</td><td>${counts[id]}</td><td>${byId[id]?byId[id].dist:""} cm</td><td>${DET(id).metodo||""}</td></tr>`).join("");
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Circuito Verde — diseño</title>
+    <style>body{font-family:Segoe UI,system-ui,sans-serif;padding:22px;color:#34433a}h1{color:#2c5a39;margin:0 0 4px}
+    img{max-width:100%;border:1px solid #d9d2bf;border-radius:10px;margin-top:10px}
+    table{border-collapse:collapse;margin-top:16px;width:100%}td,th{border:1px solid #ddd;padding:5px 10px;font-size:13px;text-align:left}
+    th{background:#e8efe3;color:#2c5a39}</style></head>
+    <body><h1>🌱 Circuito Verde</h1>
+    <p>Terreno ${state.terreno.w}×${state.terreno.h} m · ${state.plants.length} plantas · ${Object.keys(counts).length} especies · ${state.boards.length} bancales</p>
+    ${url?`<img src="${url}"/>`:"<p>(no se pudo generar la imagen del plano)</p>"}
+    <h3>Plantas</h3><table><tr><th>Planta</th><th>Cant.</th><th>Distancia</th><th>Método</th></tr>${rows}</table></body></html>`);
+  w.document.close(); setTimeout(()=>{ try{ w.focus(); w.print(); }catch(e){} }, 500);
+}
+
+/* ---- análisis agronómico + lista de compra ---- */
+function openAnalysis(){
+  const counts={}; state.plants.forEach(i=>counts[i.id]=(counts[i.id]||0)+1);
+  const total=state.plants.length;
+  if(!total){ showModal(`<div style="padding:26px;text-align:center"><div style="font-size:40px">📊</div><h3>Análisis del diseño</h3><p style="color:var(--ink-soft)">Agregá plantas al lienzo para ver el análisis.</p></div>`); return; }
+  const fam={}; state.plants.forEach(i=>{const g=byId[i.id].grupo; fam[g]=(fam[g]||0)+1;});
+  const fx={comestible:0,repele:0,poliniza:0,benefico:0,nitrogeno:0,cobertura:0};
+  state.plants.forEach(i=>byId[i.id].funciones.forEach(f=>{ if(f in fx) fx[f]++; }));
+  const famRows=Object.entries(fam).sort((a,b)=>b[1]-a[1]).map(([g,n])=>{
+    const pct=Math.round(n/total*100);
+    return `<div class="abar"><span>${g}</span><div class="atrack"><div style="width:${pct}%"></div></div><b>${pct}%</b></div>`;}).join("");
+  const monoFam=Object.entries(fam).find(([g,n])=>n/total>0.5);
+  const conf=Object.keys(state._conflicts||{}).length;
+  const shop=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).map(id=>
+    `<tr><td>${byId[id].nombre}</td><td style="text-align:center">${counts[id]}</td><td>${DET(id).metodo||"—"}</td></tr>`).join("");
+  showModal(`
+    <div class="m-head"><div><h3>📊 Análisis del diseño</h3>
+      <div class="m-sci">${total} plantas · ${Object.keys(counts).length} especies · ${state.boards.length} bancales</div></div></div>
+    <div style="padding:14px 18px">
+      ${monoFam?`<div class="warn-box">⚠️ Predominio de <b>${monoFam[0]}</b> (${Math.round(monoFam[1]/total*100)}%). Diversificá familias para reducir plagas y agotamiento del suelo.</div>`:`<div class="ok-box">✅ Buena diversidad de familias botánicas.</div>`}
+      ${conf?`<div class="warn-box">⚠️ ${conf} planta(s) con malas vecinas cerca. Revisá los ⚠ en el lienzo.</div>`:""}
+      <h5 class="asec">Distribución por familia</h5>${famRows}
+      <h5 class="asec">Funciones ecológicas</h5>
+      <div class="afx">
+        <span>🥬 ${fx.comestible} comestibles</span><span>🐝 ${fx.poliniza} polinizadoras</span>
+        <span>🛡️ ${fx.repele} repelentes</span><span>🐞 ${fx.benefico} benéficas</span>
+        <span>⚡ ${fx.nitrogeno} fijan N</span><span>🌾 ${fx.cobertura} cobertura</span>
+      </div>
+      <h5 class="asec">🛒 Lista de compra (plantines / semillas)</h5>
+      <table class="atable"><tr><th>Planta</th><th>Cant.</th><th>Cómo</th></tr>${shop}</table>
+    </div>`);
+}
+
+/* ---- calendario de siembra ---- */
+const MESES=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+let calMonth = (new Date()).getMonth()+1;   // mes seleccionado (1-12)
+function openCalendar(){ renderCalendar(); $("#modal").hidden=false; }
+function renderCalendar(){
+  const sembrar = PLANTS.filter(p=>(DET(p.id).siembraMeses||[]).includes(calMonth));
+  const cosechar = PLANTS.filter(p=>(DET(p.id).cosechaMeses||[]).includes(calMonth));
+  const chip=(p,arr)=>`<button class="cal-chip ${arr==='s'?'s':'c'}" data-goto="${p.id}">${p.nombre}</button>`;
+  const monthBtns=MESES.map((m,i)=>`<button class="cal-m ${i+1===calMonth?'on':''}" data-m="${i+1}">${m}</button>`).join("");
+  showModal(`
+    <div class="m-head"><div><h3>📅 Calendario de siembra · Bariloche</h3>
+      <div class="m-sci">Elegí el mes para ver qué conviene sembrar y cosechar.</div></div></div>
+    <div style="padding:12px 18px">
+      <div class="cal-months">${monthBtns}</div>
+      <h5 class="asec">🌱 Sembrar / plantar en ${MESES[calMonth-1]} <span style="color:var(--ink-soft);font-weight:400">(${sembrar.length})</span></h5>
+      <div class="cal-list">${sembrar.length?sembrar.map(p=>chip(p,'s')).join(""):'<span class="cal-empty">Nada típico este mes.</span>'}</div>
+      <h5 class="asec">🧺 Cosechar en ${MESES[calMonth-1]} <span style="color:var(--ink-soft);font-weight:400">(${cosechar.length})</span></h5>
+      <div class="cal-list">${cosechar.length?cosechar.map(p=>chip(p,'c')).join(""):'<span class="cal-empty">Nada típico este mes.</span>'}</div>
+      <p style="font-size:11px;color:var(--ink-soft);margin-top:14px">Tocá una planta para ver su ficha. Cultivos de fruto (tomate, pimiento, etc.) asumen invernadero.</p>
+    </div>`);
 }
 
 /* ============================================================
@@ -814,7 +1016,7 @@ function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
   if(window.innerWidth < 880) document.body.classList.add("cat-collapsed");
-  renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage();
+  renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage(); renderProjSelect();
   if(loginRequired() && !sessionValid()){ requireLogin(); }
   else { renderUserChip(); maybeAutoTutorial(); }
 }
