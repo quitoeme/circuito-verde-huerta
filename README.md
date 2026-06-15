@@ -18,9 +18,14 @@ App web de un solo archivo (sin instalación, funciona offline) para *estrategiz
 
 ## Cómo usar
 
-Abrí `index.html` con doble clic en cualquier navegador. No necesita servidor ni conexión.
+- **Online:** https://planificador-huerta.vercel.app
+- **Local:** abrí `index.html` con doble clic en cualquier navegador (funciona offline).
 
 > Para desarrollo se incluye `.claude/launch.json` que sirve la carpeta con `python -m http.server 5180`.
+
+### Login con Google
+
+La app usa **Google Identity Services** con el mismo Client ID que la app de Inventario (ver `config.js`). Para que el login funcione en un dominio, ese origen debe figurar en **"Orígenes autorizados de JavaScript"** del Client ID en Google Cloud Console. Ej.: `https://planificador-huerta.vercel.app` y `http://localhost:5180`. Si `config.js` tiene el `googleClientId` vacío, la app queda abierta sin login.
 
 ## Datos / fuentes
 
