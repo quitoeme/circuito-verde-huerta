@@ -152,6 +152,14 @@
   .cal-chip.c{border-color:#e8c98a;background:#fcf3e2}
   .cal-chip:hover{filter:brightness(.95)}
   .cal-empty{font-size:12px;color:var(--ink-soft)}
+  /* optimizador de siembra */
+  .opt-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:2px 0}
+  .opt-card{border:1px solid var(--line);border-radius:10px;padding:8px 10px;text-align:center;background:var(--bg)}
+  .opt-card.on{border-color:var(--green);background:#eaf4ea;box-shadow:0 0 0 1px var(--green)}
+  .opt-card .opt-n{font-size:22px;font-weight:800;color:var(--green-dark)}
+  .opt-card .opt-t{font-size:11px;color:var(--ink-soft);line-height:1.2}
+  .opt-card .opt-t span{display:inline-block;background:var(--green);color:#fff;border-radius:10px;padding:0 5px;font-size:9px;font-weight:700}
+  .opt-card .opt-t span.no{background:#b06a2b}
 
   .legend{padding:8px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink-soft);background:var(--paper)}
   .legend span{margin-right:10px;white-space:nowrap}
@@ -524,6 +532,7 @@
 <script src="plants.js"></script>
 <script src="details.js"></script>
 <script src="details-extra.js"></script>
+<script src="siembra-inta.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

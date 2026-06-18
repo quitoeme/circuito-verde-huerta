@@ -620,6 +620,7 @@ function openInfo(id){
       ${cell("💧 Riego", d.riego ? `<b>${d.riego}</b> — ${d.riegoTipo||""}` : "")}
       ${cell("🗓️ Temporada en cantero", (d.temporadas||[]).join(" · "))}
       ${cell("🌱 Método recomendado", d.metodo)}
+      ${cell("🌾 Forma de siembra (INTA)", d.formaSiembra ? `${d.formaSiembra}${d.entreLineasCm?` · marco ${p.dist}×${d.entreLineasCm} cm`:""}` : "")}
       ${cell("📅 Época de siembra", p.siembra)}
       ${cell("📏 Distancia entre plantas", p.dist+" cm")}
       ${cell("❄️ Tolerancia a heladas", d.heladas)}
@@ -665,10 +666,14 @@ function bind(){
   // cerrar modal
   $("#modalClose").addEventListener("click",closeInfo);
   $("#modal").addEventListener("click",e=>{ if(e.target.id==="modal") closeInfo(); });
-  // modal: mes del calendario y compañera/planta clickeable
+  // modal: mes del calendario, optimizador y compañera/planta clickeable
   $("#modalBody").addEventListener("click",e=>{
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    const f=e.target.closest("#optFill,#optFillT"); if(f && optBoard){ fillBoard(optBoard, f.dataset.id, f.dataset.mode); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
+  });
+  $("#modalBody").addEventListener("change",e=>{
+    if(e.target.id==="optPlant" && optBoard){ $("#optResult").innerHTML = renderOptResult(optBoard, e.target.value); }
   });
   // arrastrar del catálogo (mouse) / tocar para colocar (touch)
   $("#catalog").addEventListener("pointerdown",e=>{
@@ -1041,6 +1046,7 @@ function openBoardAnalysis(b){
       <h3>Bancal vacío</h3><p style="color:var(--ink-soft)">Poné plantas dentro de este bancal (${b.L.toFixed(1)}×${b.W.toFixed(1)} m) y volvé a analizarlo.</p></div>`);
     return;
   }
+  optBoard=b;
   const famCount={}, grpCount={}, counts={};
   inside.forEach(pl=>{ const p=byId[pl.id]; if(!p) return;
     counts[pl.id]=(counts[pl.id]||0)+1; famCount[p.grupo]=(famCount[p.grupo]||0)+1;
@@ -1076,10 +1082,84 @@ function openBoardAnalysis(b){
       <h5 class="asec">Ciclo de rotación (INTA)</h5>
       <div style="font-size:12.5px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px">${ciclo}</div>
       <h5 class="asec">Recomendación</h5>${reco}
+      ${optimizerSection(b, Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0])}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--green-dark);font-weight:600">¿Por qué rotar? (INTA)</summary>
         <ul style="font-size:12.5px;color:var(--ink);margin:8px 0 0;padding-left:18px;line-height:1.5">${ROT_INTA.reglas.map(r=>`<li>${r}</li>`).join("")}</ul></details>
     </div>
     ${fuentesHtml}`);
+}
+
+/* ============================================================
+   OPTIMIZADOR DE SIEMBRA (marco real vs tresbolillo) — por bancal
+   ============================================================ */
+let optBoard=null;
+const SQRT3_2 = Math.sqrt(3)/2;
+/* posiciones (centros, relativas al bancal) para una disposición dada */
+function packPositions(L,W,dPlant,dRow,mode){
+  const pos=[]; if(dPlant<=0) return pos;
+  const hp=dPlant/2;
+  if(mode==="tres"){
+    const rs=dPlant*SQRT3_2;                       // separación entre hileras (equilátero)
+    if(W<dPlant || L<dPlant){ if(L>=hp&&W>=hp) pos.push({x:L/2,y:W/2}); return pos; }
+    const nrows=Math.floor((W-dPlant)/rs)+1;
+    for(let r=0;r<nrows;r++){
+      const y=hp+r*rs, off=(r%2)?hp:0;
+      const ncols=Math.floor((L-dPlant-off)/dPlant)+1;
+      for(let c=0;c<ncols;c++){ const x=hp+off+c*dPlant; if(x<=L-hp+1e-6) pos.push({x,y}); }
+    }
+  } else {                                          // marco real / en línea (rectangular)
+    const dr=dRow||dPlant, hr=dr/2;
+    if(W<dr || L<dPlant){ if(L>=hp&&W>=hr) pos.push({x:L/2,y:W/2}); return pos; }
+    const ncols=Math.floor((L-dPlant)/dPlant)+1, nrows=Math.floor((W-dr)/dr)+1;
+    for(let r=0;r<nrows;r++) for(let c=0;c<ncols;c++) pos.push({x:hp+c*dPlant, y:hr+r*dr});
+  }
+  return pos;
+}
+function optPlantOptions(selId){
+  return PLANTS.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .map(p=>`<option value="${p.id}" ${p.id===selId?"selected":""}>${p.nombre} (${p.dist} cm)</option>`).join("");
+}
+function optimizerSection(b, defId){
+  return `<h5 class="asec">📐 Optimizar siembra (aprovechar el espacio)</h5>
+    <div style="font-size:12.5px;margin-bottom:6px">Planta:
+      <select id="optPlant" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;max-width:200px">${optPlantOptions(defId)}</select></div>
+    <div id="optResult">${renderOptResult(b, defId)}</div>`;
+}
+function renderOptResult(b, id){
+  const p=byId[id]; if(!p) return "";
+  const det=DET(id), d=p.dist/100;
+  const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;   // entre hileras (INTA) ≥ entre plantas
+  const lineN=packPositions(b.L,b.W,d,el,"sq").length;
+  const tresN=packPositions(b.L,b.W,d,d,"tres").length;
+  const elCm=Math.round(el*100);
+  const intaInfo = det.formaSiembra
+    ? `<div style="font-size:12px;background:var(--green-soft);border:1px solid #cfe0c8;border-radius:9px;padding:7px 10px;margin-bottom:8px">
+         <b>INTA</b> · Forma de siembra: <b>${det.formaSiembra}</b> · ${det.implanteInta||""} · marco ${p.dist} × ${elCm} cm (entre plantas × entre hileras)</div>`
+    : `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">Distancia entre plantas: ${p.dist} cm (sin marco INTA tabulado para esta especie).</div>`;
+  return `
+    ${intaInfo}
+    <div class="opt-grid">
+      <div class="opt-card on"><div class="opt-n">${lineN}</div><div class="opt-t">En línea (marco INTA) <span>INTA</span></div></div>
+      <div class="opt-card"><div class="opt-n">${tresN}</div><div class="opt-t">Tresbolillo (denso) <span class="no">no INTA</span></div></div>
+    </div>
+    <div style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 8px">El marco <b>en línea</b> respeta la distancia entre hileras de INTA. El <b>tresbolillo</b> (hileras alternadas) es criterio hortícola —no INTA— y densifica ~10-15% si el cultivo lo tolera.</div>
+    <button class="btn" id="optFill" data-id="${id}" data-mode="linea">🌱 Ordenar ${lineN} × ${p.nombre} (marco INTA)</button>
+    <button class="btn ghost" id="optFillT" data-id="${id}" data-mode="tres" style="margin-top:6px">…o ${tresN} en tresbolillo (denso · no INTA)</button>`;
+}
+function fillBoard(b, id, mode){
+  const p=byId[id]; if(!p) return;
+  const det=DET(id), d=p.dist/100;
+  const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;
+  const pos=packPositions(b.L,b.W,d,(mode==="tres"?d:el),(mode==="tres"?"tres":"sq"));
+  if(!pos.length){ alert("No entra ninguna planta de ese tamaño en este bancal."); return; }
+  pushUndo();
+  // quitar plantas que ya estaban dentro del bancal
+  const insideUids=new Set(plantsInBoard(b).map(x=>x.uid));
+  state.plants=state.plants.filter(x=>!insideUids.has(x.uid));
+  // colocar en la disposición óptima
+  pos.forEach(pt=>{ state.plants.push({uid:"p"+(state.nextId++), id, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}); });
+  save(); renderStage();
+  openBoardAnalysis(b);   // refresca el panel con el nuevo conteo
 }
 
 /* ---- calendario de siembra ---- */
