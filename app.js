@@ -381,7 +381,7 @@ function boardEl(b){
       <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="rot" title="Rotar 90°">⟳</button>
       <button class="del" title="Quitar bancal">✕</button>
-      <button class="ana" title="Analizar bancal y rotación (INTA)">🔬</button>
+      <button class="ana" title="Analizar y optimizar este bancal (rotación INTA + cuántas plantas entran)">🔬 Analizar</button>
       <span class="handle" title="Redimensionar"></span>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
@@ -1090,8 +1090,14 @@ function rotCycleHTML(dom){
 function openBoardAnalysis(b){
   const inside=plantsInBoard(b);
   if(!inside.length){
-    showModal(`<div style="padding:26px;text-align:center"><div style="font-size:42px">🔬</div>
-      <h3>Bancal vacío</h3><p style="color:var(--ink-soft)">Poné plantas dentro de este bancal (${b.L.toFixed(1)}×${b.W.toFixed(1)} m) y volvé a analizarlo.</p></div>`);
+    optBoard=b;
+    showModal(`
+      <div class="m-head"><div><h3>🔬 Analizar y optimizar bancal</h3>
+        <div class="m-sci">${b.L.toFixed(1)} × ${b.W.toFixed(1)} m · vacío</div></div></div>
+      <div style="padding:12px 18px">
+        <div class="ok-box">Elegí una planta para ver <b>cuántas entran</b> en este bancal y ordenarlas en un toque. Cuando tenga plantas, acá también vas a ver la <b>rotación INTA</b> recomendada.</div>
+        ${optimizerSection(b, "lechuga")}
+      </div>`);
     return;
   }
   optBoard=b;
