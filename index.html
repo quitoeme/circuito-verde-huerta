@@ -189,7 +189,15 @@
   }
   .toolbar .group{display:flex;align-items:center;gap:6px;background:var(--bg);padding:4px 8px;border-radius:9px;border:1px solid var(--line)}
   .toolbar label{font-size:11px;color:var(--ink-soft);font-weight:600}
-  .toolbar input[type=number]{width:54px;padding:4px 6px;border:1px solid var(--line);border-radius:6px;font-size:12px}
+  .toolbar input[type=number]{width:54px;padding:5px 7px;border:1px solid var(--line);border-radius:8px;font-size:12px;background:var(--bg)}
+  .snap-lbl{display:inline-flex;align-items:center;gap:4px;cursor:pointer;white-space:nowrap}
+  /* sección Proyecto moderna */
+  .proj-select{appearance:none;-webkit-appearance:none;border:1px solid var(--line);background:var(--bg)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%235e6f63' stroke-width='1.6'/%3E%3C/svg%3E") no-repeat right 8px center;
+    border-radius:9px;padding:6px 26px 6px 10px;font-size:12.5px;color:var(--ink);max-width:170px;cursor:pointer}
+  .iconbtn{border:1px solid var(--line);background:var(--bg);border-radius:9px;width:30px;height:30px;
+    font-size:14px;cursor:pointer;color:var(--green-dark);display:inline-flex;align-items:center;justify-content:center;line-height:1}
+  .iconbtn:hover{background:var(--green-soft);border-color:var(--green)}
   .btn{
     border:0;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer;
     background:var(--green);color:#fff;transition:.12s
@@ -465,7 +473,7 @@
         <button class="btn ghost" id="zoomOut">−</button>
         <span id="scaleLbl" style="font-size:11px;min-width:74px;text-align:center">100 px/m</span>
         <button class="btn ghost" id="zoomIn">+</button>
-        <label style="margin-left:6px"><input type="checkbox" id="snapChk"/> imán</label>
+        <label class="snap-lbl" style="margin-left:6px" title="Ajustá la posición a una grilla de 0,25 m para alinear prolijo"><input type="checkbox" id="snapChk"/> 🧲 Ajustar a grilla</label>
       </div>
       <div class="group">
         <label>Bancal (m)</label>
@@ -479,12 +487,12 @@
         <input type="number" id="tH" value="8" step="1" min="2"/>
         <button class="btn ghost" id="setTerreno">Aplicar</button>
       </div>
-      <div class="group">
-        <label>Proyecto</label>
-        <select id="projSelect" title="Cargar proyecto"></select>
-        <button class="btn ghost" id="projSave" title="Guardar proyecto">💾</button>
-        <button class="btn ghost" id="projNew" title="Nuevo / vaciar">🆕</button>
-        <button class="btn ghost" id="projImport" title="Importar JSON">📁</button>
+      <div class="group proj-group">
+        <label>📁 Proyecto</label>
+        <select id="projSelect" class="proj-select" title="Cargar proyecto"></select>
+        <button class="iconbtn" id="projSave" title="Guardar proyecto">💾</button>
+        <button class="iconbtn" id="projNew" title="Nuevo / vaciar">＋</button>
+        <button class="iconbtn" id="projImport" title="Importar JSON">⤓</button>
         <input type="file" id="projFile" accept="application/json,.json" hidden/>
       </div>
       <button class="btn ghost" id="calBtn" title="Calendario de siembra">📅 Calendario</button>
@@ -546,6 +554,15 @@
       <rect width="13" height="7" fill="#bd8a52"/>
       <path d="M0 1.4 H13 M0 3.6 H13 M0 5.6 H13" stroke="#9a6a39" stroke-width="0.7" opacity="0.55"/>
       <path d="M3 0 V7 M9 0 V7" stroke="#a8743f" stroke-width="0.5" opacity="0.35"/>
+    </pattern>
+    <!-- mulch / paja apilada para el interior del bancal -->
+    <pattern id="mulch" width="24" height="17" patternUnits="userSpaceOnUse" patternTransform="rotate(-9)">
+      <rect width="24" height="17" fill="#f4ead0"/>
+      <g stroke-linecap="round" fill="none">
+        <path d="M1 3 H12 M13 8 H23 M3 12 H13 M15 15 H22" stroke="#cdb784" stroke-width="1.5" opacity=".85"/>
+        <path d="M6 6 H15 M2 9 H9 M16 4 H21 M9 15 H17" stroke="#bca06a" stroke-width="1" opacity=".6"/>
+        <path d="M18 11 H24 M0 15 H5" stroke="#d9c79a" stroke-width="1.6" opacity=".7"/>
+      </g>
     </pattern>
   </defs>
 </svg>

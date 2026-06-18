@@ -341,9 +341,11 @@ function plantEl(inst){
   makePlantDraggable(el, inst);
   return el;
 }
-/* frame de listones de madera vistos desde arriba (relleno blanco) */
-function boardFrameInner(W,H){
-  const t = Math.max(7, Math.min(state.scale*0.13, Math.min(W,H)/2 - 3));
+/* grosor visual del listón de madera (en px), dibujado POR FUERA del interior */
+const FRAME_M = 0.09;
+function boardFrameThick(){ return Math.max(7, Math.min(state.scale*FRAME_M, 18)); }
+/* frame de listones (W,H = footprint TOTAL; t = grosor de madera; interior con mulch) */
+function boardFrameInner(W,H,t){
   const ix=t, iy=t, iw=Math.max(0,W-2*t), ih=Math.max(0,H-2*t);
   return `
     <path d="M0 0 H${W} V${H} H0 Z M${t} ${t} H${W-t} V${H-t} H${t} Z"
@@ -352,25 +354,26 @@ function boardFrameInner(W,H){
     <line x1="${W}" y1="0" x2="${W-t}" y2="${t}" stroke="#5e3f1f" stroke-width="1"/>
     <line x1="${W}" y1="${H}" x2="${W-t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
     <line x1="0" y1="${H}" x2="${t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
-    <rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="#ffffff" stroke="#7a5226" stroke-width="1.2"/>
-    <path d="M${ix} ${iy} H${ix+iw}" stroke="#000" stroke-opacity=".10" stroke-width="2"/>
-    <path d="M${ix} ${iy} V${iy+ih}" stroke="#000" stroke-opacity=".10" stroke-width="2"/>
+    <rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="url(#mulch)" stroke="#9c7a3f" stroke-width="1.2"/>
+    <path d="M${ix} ${iy} H${ix+iw}" stroke="#000" stroke-opacity=".12" stroke-width="2"/>
+    <path d="M${ix} ${iy} V${iy+ih}" stroke="#000" stroke-opacity=".12" stroke-width="2"/>
     <path d="M0 0 H${W}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
     <path d="M0 0 V${H}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
     <path d="M0 ${H} H${W}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>
     <path d="M${W} 0 V${H}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>`;
 }
-function boardFrameSVG(W,H){
+function boardFrameSVG(W,H,t){
   return `<svg class="frame" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
-    preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${boardFrameInner(W,H)}</svg>`;
+    preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${boardFrameInner(W,H,t)}</svg>`;
 }
 function boardEl(b){
-  const s = state.scale;
+  const s = state.scale, ft = boardFrameThick();
+  const wpx = b.L*s + 2*ft, hpx = b.W*s + 2*ft;
   const el = document.createElement("div");
   el.className = "node board"; el.dataset.uid = b.uid;
-  el.style.left = (b.x*s)+"px"; el.style.top = (b.y*s)+"px";
-  el.innerHTML = `<div class="board-rect" style="width:${b.L*s}px;height:${b.W*s}px">
-      ${boardFrameSVG(b.L*s,b.W*s)}
+  el.style.left = (b.x*s - ft)+"px"; el.style.top = (b.y*s - ft)+"px";
+  el.innerHTML = `<div class="board-rect" style="width:${wpx}px;height:${hpx}px">
+      ${boardFrameSVG(wpx,hpx,ft)}
       <span class="dim h">${b.L.toFixed(1)} m</span>
       <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="rot" title="Rotar 90°">⟳</button>
@@ -426,9 +429,10 @@ function startGroupDrag(e, el){
     const dx=(ev.clientX-rect.left)/s-startMX, dy=(ev.clientY-rect.top)/s-startMY;
     items.forEach(it=>{
       let nx=snapVal(it.sx+dx), ny=snapVal(it.sy+dy);
-      if(it.type==="plant"){ nx=clamp(nx,0,stageW()); ny=clamp(ny,0,stageH()); }
-      else { nx=clamp(nx,0,stageW()-it.ref.L); ny=clamp(ny,0,stageH()-it.ref.W); }
-      it.ref.x=nx; it.ref.y=ny; it.el.style.left=(nx*s)+"px"; it.el.style.top=(ny*s)+"px";
+      if(it.type==="plant"){ nx=clamp(nx,0,stageW()); ny=clamp(ny,0,stageH());
+        it.ref.x=nx; it.ref.y=ny; it.el.style.left=(nx*s)+"px"; it.el.style.top=(ny*s)+"px"; }
+      else { nx=clamp(nx,0,stageW()-it.ref.L); ny=clamp(ny,0,stageH()-it.ref.W);
+        const ft=boardFrameThick(); it.ref.x=nx; it.ref.y=ny; it.el.style.left=(nx*s-ft)+"px"; it.el.style.top=(ny*s-ft)+"px"; }
     });
     detectOverlaps();
   };
@@ -487,11 +491,11 @@ function makeBoardResizable(handle, rectEl, b){
     const move=ev=>{
       b.L = Math.max(0.2, +(L0 + (ev.clientX-startX)/s).toFixed(2));
       b.W = Math.max(0.2, +(W0 + (ev.clientY-startY)/s).toFixed(2));
-      const Wpx=b.L*s, Hpx=b.W*s;
+      const ft=boardFrameThick(), Wpx=b.L*s+2*ft, Hpx=b.W*s+2*ft;
       rectEl.style.width=Wpx+"px"; rectEl.style.height=Hpx+"px";
       const svg=rectEl.querySelector("svg.frame");
       svg.setAttribute("width",Wpx); svg.setAttribute("height",Hpx);
-      svg.setAttribute("viewBox",`0 0 ${Wpx} ${Hpx}`); svg.innerHTML=boardFrameInner(Wpx,Hpx);
+      svg.setAttribute("viewBox",`0 0 ${Wpx} ${Hpx}`); svg.innerHTML=boardFrameInner(Wpx,Hpx,ft);
       rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
       rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
     };
@@ -929,9 +933,9 @@ function exportPNG(){
   ctx.fillStyle="#2c5a39"; ctx.font="bold 13px Segoe UI";
   ctx.fillText(`Terreno ${state.terreno.w} × ${state.terreno.h} m`, mx+6, my-7>12?my-7:my+16);
   state.boards.forEach(b=>{
-    const x=b.x*s,y=b.y*s,bw=b.L*s,bh=b.W*s, t=Math.max(7,Math.min(s*0.13,Math.min(bw,bh)/2-3));
-    ctx.fillStyle="#b5824e"; ctx.fillRect(x,y,bw,bh);
-    ctx.fillStyle="#ffffff"; ctx.fillRect(x+t,y+t,Math.max(0,bw-2*t),Math.max(0,bh-2*t));
+    const ft=boardFrameThick(), x=b.x*s-ft, y=b.y*s-ft, bw=b.L*s+2*ft, bh=b.W*s+2*ft;
+    ctx.fillStyle="#b5824e"; ctx.fillRect(x,y,bw,bh);                       // madera (por fuera)
+    ctx.fillStyle="#f3e9cf"; ctx.fillRect(b.x*s,b.y*s,b.L*s,b.W*s);          // interior (mulch/paja)
     ctx.strokeStyle="#6e4a25"; ctx.lineWidth=2; ctx.strokeRect(x,y,bw,bh);
     ctx.fillStyle="#fff"; ctx.font="bold 11px Segoe UI"; ctx.textAlign="center";
     ctx.fillText(b.L.toFixed(1)+" m", x+bw/2, y+13); ctx.textAlign="left";
