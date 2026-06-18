@@ -687,6 +687,7 @@ function bind(){
   // modal: mes del calendario, optimizador y compañera/planta clickeable
   $("#modalBody").addEventListener("click",e=>{
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    const tb=e.target.closest("[data-btab]"); if(tb && boardAnaB){ boardTab=tb.dataset.btab; showModal(boardAnaHTML(boardAnaB)); return; }
     if(e.target.closest("#goLegumes")){ closeInfo(); showLegumes(); return; }
     const ao=e.target.closest(".assoc-opt"); if(ao && optBoard && assocPrincipal){
       document.querySelectorAll(".assoc-opt").forEach(x=>x.classList.toggle("on", x===ao));
@@ -732,6 +733,7 @@ function bind(){
     pushUndo();
     state.boards.push({uid:"b"+(state.nextId++), x:MARGIN+0.3, y:MARGIN+0.3, L:+L, W:+W});
     save(); renderStage();
+    toast("🔬 Tocá “Analizar” en el bancal: elegís qué plantar y te calculo la mejor forma");
   });
   // terreno
   $("#setTerreno").addEventListener("click",()=>{
@@ -1106,59 +1108,61 @@ function rotCycleHTML(dom){
   }).join(`<div class="rotarrow">→</div>`);
   return `<div class="rotcycle">${steps}<div class="rotloop" title="el ciclo vuelve a empezar">↻</div></div>`;
 }
+let boardAnaB=null, boardTab="plantar";
 function openBoardAnalysis(b){
+  boardAnaB=b; optBoard=b;
+  showModal(boardAnaHTML(b));
+}
+function boardAnaHTML(b){
   const inside=plantsInBoard(b);
-  if(!inside.length){
-    optBoard=b;
-    showModal(`
-      <div class="m-head"><div><h3>🔬 Analizar y optimizar bancal</h3>
-        <div class="m-sci">${b.L.toFixed(1)} × ${b.W.toFixed(1)} m · vacío</div></div></div>
-      <div style="padding:12px 18px">
-        <div class="ok-box">Elegí una planta para ver <b>cuántas entran</b> en este bancal y ordenarlas en un toque. Cuando tenga plantas, acá también vas a ver la <b>rotación INTA</b> recomendada.</div>
-        ${optimizerSection(b, "lechuga")}
-      </div>`);
-    return;
-  }
-  optBoard=b;
+  const tabs=`<div class="btabs">
+      <button class="btab ${boardTab==='plantar'?'on':''}" data-btab="plantar">📐 Plantar / optimizar</button>
+      <button class="btab ${boardTab==='rotacion'?'on':''}" data-btab="rotacion">🔄 Rotación INTA</button>
+    </div>`;
+  return `
+    <div class="m-head"><div><h3>🔬 Bancal ${b.L.toFixed(1)} × ${b.W.toFixed(1)} m</h3>
+      <div class="m-sci">${inside.length} planta${inside.length!==1?"s":""} adentro</div></div></div>
+    <div style="padding:10px 18px 0">${tabs}</div>
+    <div id="boardTab">${renderBoardTab(b, boardTab)}</div>`;
+}
+function renderBoardTab(b, tab){ return tab==="rotacion" ? rotacionTabHTML(b) : plantarTabHTML(b); }
+function plantarTabHTML(b){
+  const inside=plantsInBoard(b);
+  const counts={}; inside.forEach(pl=>counts[pl.id]=(counts[pl.id]||0)+1);
+  const def = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0] || "lechuga";
+  return `<div style="padding:8px 18px 16px">
+    <div class="tip-box">Elegí <b>qué querés plantar</b> y te calculo <b>cuántas entran y la mejor forma de acomodarlas</b> (con las distancias de INTA). Después tocá <b>Ordenar</b> y las ubica solas.</div>
+    ${optimizerSection(b, def)}
+  </div>`;
+}
+function rotacionTabHTML(b){
+  const inside=plantsInBoard(b);
+  if(!inside.length) return `<div style="padding:26px 18px;text-align:center;color:var(--ink-soft)">
+    <div style="font-size:34px">🔄</div>Plantá algo en el bancal (pestaña <b>Plantar</b>) y acá vas a ver en qué fase del <b>ciclo de rotación INTA</b> estás y qué conviene la próxima temporada.</div>`;
   const famCount={}, grpCount={}, counts={};
   inside.forEach(pl=>{ const p=byId[pl.id]; if(!p) return;
     counts[pl.id]=(counts[pl.id]||0)+1; famCount[p.grupo]=(famCount[p.grupo]||0)+1;
     const g=rotGroup(p); grpCount[g]=(grpCount[g]||0)+1; });
-  const hasLeg = (grpCount.leguminosa||0)>0;
-  const demandOrder=["hoja","fruto","raiz","leguminosa"];
-  let dom=null,domN=0; demandOrder.forEach(g=>{ if((grpCount[g]||0)>domN){ domN=grpCount[g]; dom=g; } });
-  const familias=Object.keys(famCount);
+  const hasLeg=(grpCount.leguminosa||0)>0;
+  let dom=null,domN=0; ["hoja","fruto","raiz","leguminosa"].forEach(g=>{ if((grpCount[g]||0)>domN){domN=grpCount[g];dom=g;} });
   const famRepetidas=Object.entries(famCount).filter(([f,n])=>n>=2).map(([f])=>f);
-  const plantList=Object.keys(counts).map(id=>`<span class="pill">${byId[id].nombre} ×${counts[id]}`+`</span>`).join("");
   const famList=Object.entries(famCount).sort((a,b)=>b[1]-a[1]).map(([f,n])=>`<span class="pill">${f} (${n})</span>`).join("");
   let reco="";
-  if(dom){
-    const ng=ROT_INTA.next[dom];
-    reco = `<div class="ok-box"><b>Próxima temporada:</b> este bancal fue de <b>${ROT_INTA.label[dom].toLowerCase()}</b>. Según la rotación INTA, seguí con <b>${ROT_INTA.label[ng].toLowerCase()}</b> — ej.: ${ROT_INTA.ejemplos[ng]}.</div>`;
+  if(dom){ const ng=ROT_INTA.next[dom];
+    reco=`<div class="ok-box"><b>Próxima temporada:</b> este bancal fue de <b>${ROT_INTA.label[dom].toLowerCase()}</b>. Seguí con <b>${ROT_INTA.label[ng].toLowerCase()}</b> — ej.: ${ROT_INTA.ejemplos[ng]}.</div>`;
     reco += hasLeg
-      ? `<div class="ok-box">✅ Hay leguminosas que aportan nitrógeno: el suelo queda en buenas condiciones para el próximo ciclo.</div>`
-      : `<div class="warn-box">🌱 No hay leguminosas. Antes del próximo cultivo exigente, conviene sembrar una <b>leguminosa o abono verde</b> (arveja, haba, trébol, vicia) para reponer nitrógeno.<br><button class="btn ghost" id="goLegumes" style="margin-top:7px">🫛 Ver leguminosas y abonos verdes</button></div>`;
+      ? `<div class="ok-box">✅ Hay leguminosas que reponen nitrógeno: el suelo queda en buenas condiciones.</div>`
+      : `<div class="warn-box">🌱 No hay leguminosas. Antes del próximo cultivo exigente conviene una <b>leguminosa o abono verde</b> para reponer nitrógeno.<br><button class="btn ghost" id="goLegumes" style="margin-top:7px">🫛 Ver leguminosas</button></div>`;
   }
-  if(famRepetidas.length){
-    reco += `<div class="warn-box">⚠️ Familia(s) con varias plantas: <b>${famRepetidas.join(", ")}</b>. No vuelvas a plantar esa familia acá por unos ${ROT_INTA.anios} años (evita plagas y enfermedades del suelo).</div>`;
-  }
-  const fuentesHtml = ROT_INTA.fuentes.length
-    ? `<div class="m-foot">Rotación según criterio INTA / ProHuerta. Fuentes: ${ROT_INTA.fuentes.map((u,i)=>`<a href="${u}" target="_blank" rel="noopener">[${i+1}]</a>`).join(" ")}</div>`
-    : `<div class="m-foot">Rotación según criterio agroecológico de INTA / ProHuerta. Orientativo: verificá la cartilla de tu zona.</div>`;
-  showModal(`
-    <div class="m-head"><div><h3>🔬 Análisis del bancal · rotación INTA</h3>
-      <div class="m-sci">${b.L.toFixed(1)} × ${b.W.toFixed(1)} m · ${inside.length} plantas</div></div></div>
-    <div style="padding:12px 18px">
-      <h5 class="asec">Plantas en el bancal</h5><div class="cal-list">${plantList}</div>
-      <h5 class="asec">Familias presentes</h5><div class="cal-list">${famList}</div>
-      <h5 class="asec">Ciclo de rotación (INTA)</h5>
-      ${rotCycleHTML(dom)}
-      <h5 class="asec">Recomendación</h5>${reco}
-      ${optimizerSection(b, Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0])}
-      <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--green-dark);font-weight:600">¿Por qué rotar? (INTA)</summary>
-        <ul style="font-size:12.5px;color:var(--ink);margin:8px 0 0;padding-left:18px;line-height:1.5">${ROT_INTA.reglas.map(r=>`<li>${r}</li>`).join("")}</ul></details>
-    </div>
-    ${fuentesHtml}`);
+  if(famRepetidas.length) reco+=`<div class="warn-box">⚠️ Familia(s) repetida(s): <b>${famRepetidas.join(", ")}</b>. No las repitas acá por unos ${ROT_INTA.anios} años.</div>`;
+  const fuentes=`<div class="m-foot" style="padding:10px 0 0">Criterio INTA / ProHuerta. Fuentes: ${ROT_INTA.fuentes.map((u,i)=>`<a href="${u}" target="_blank" rel="noopener">[${i+1}]</a>`).join(" ")}</div>`;
+  return `<div style="padding:8px 18px 16px">
+    <h5 class="asec">Familias presentes</h5><div class="cal-list">${famList}</div>
+    <h5 class="asec">¿En qué fase está este bancal?</h5>${rotCycleHTML(dom)}
+    <h5 class="asec">Recomendación</h5>${reco}
+    <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--green-dark);font-weight:600">¿Por qué rotar? (INTA)</summary>
+      <ul style="font-size:12.5px;color:var(--ink);margin:8px 0 0;padding-left:18px;line-height:1.5">${ROT_INTA.reglas.map(r=>`<li>${r}</li>`).join("")}</ul></details>
+    ${fuentes}</div>`;
 }
 
 /* ============================================================
@@ -1171,7 +1175,8 @@ function packPositions(L,W,dPlant,dRow,mode){
   const pos=[]; if(dPlant<=0) return pos;
   const hp=dPlant/2;
   if(mode==="tres"){
-    const rs=dPlant*SQRT3_2;                       // separación entre hileras (equilátero)
+    // si el acceso/canopia exige más entre hileras (dRow>dPlant), respetarlo; si no, triángulo equilátero
+    const rs = (dRow && dRow>dPlant) ? dRow : dPlant*SQRT3_2;
     if(W<dPlant || L<dPlant){ if(L>=hp&&W>=hp) pos.push({x:L/2,y:W/2}); return pos; }
     const nrows=Math.floor((W-dPlant)/rs)+1;
     const startY=(W-(nrows-1)*rs)/2;               // centrar verticalmente
@@ -1205,7 +1210,7 @@ function renderOptResult(b, id){
   const det=DET(id), d=p.dist/100;
   const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;   // entre hileras (INTA) ≥ entre plantas
   const lineN=packPositions(b.L,b.W,d,el,"sq").length;
-  const tresN=packPositions(b.L,b.W,d,d,"tres").length;
+  const tresN=packPositions(b.L,b.W,d,el,"tres").length;
   const elCm=Math.round(el*100);
   const lrows=Math.max(1, b.W<el?1:Math.floor((b.W-el)/el)+1), lcols=Math.max(1, b.L<d?1:Math.floor((b.L-d)/d)+1);
   const intaInfo = det.formaSiembra
@@ -1228,7 +1233,7 @@ function fillBoard(b, id, mode){
   const p=byId[id]; if(!p) return;
   const det=DET(id), d=p.dist/100;
   const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;
-  const pos=packPositions(b.L,b.W,d,(mode==="tres"?d:el),(mode==="tres"?"tres":"sq"));
+  const pos=packPositions(b.L,b.W,d,el,(mode==="tres"?"tres":"sq"));
   if(!pos.length){ alert("No entra ninguna planta de ese tamaño en este bancal."); return; }
   pushUndo();
   // quitar plantas que ya estaban dentro del bancal
