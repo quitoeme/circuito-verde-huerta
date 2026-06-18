@@ -867,21 +867,28 @@ function nudge(dx,dy){
   });
   save(); renderStage();
 }
-/* agregar N plantas en una grilla prolija cerca del centro visible */
+/* agregar N plantas, cada una en el próximo espacio LIBRE cerca de lo visible */
 function addPlants(id, n){
   const p=byId[id]; if(!p) return;
-  const s=state.scale, d=Math.max(p.dist/100, 0.1);
-  const cx=(stageWrap.scrollLeft + Math.min(stageWrap.clientWidth, stage.offsetWidth)/2)/s;
-  const cy=(stageWrap.scrollTop  + Math.min(stageWrap.clientHeight, stage.offsetHeight)/2)/s;
-  const cols=Math.max(1, Math.ceil(Math.sqrt(n)));
-  pushUndo();
-  for(let i=0;i<n;i++){
-    const c=i%cols, r=Math.floor(i/cols);
-    const x=clamp(snapVal(cx + (c-(cols-1)/2)*d), 0, stageW());
-    const y=clamp(snapVal(cy + (r-(Math.ceil(n/cols)-1)/2)*d), 0, stageH());
-    state.plants.push({uid:"p"+(state.nextId++), id, x:+x.toFixed(3), y:+y.toFixed(3)});
+  const s=state.scale, d=Math.max(p.dist/100, 0.12), myR=d/2, step=Math.max(d, 0.15);
+  const vcx=(stageWrap.scrollLeft + Math.min(stageWrap.clientWidth, stage.offsetWidth)/2)/s;
+  const vcy=(stageWrap.scrollTop  + Math.min(stageWrap.clientHeight, stage.offsetHeight)/2)/s;
+  // candidatos sobre una grilla, ordenados por cercanía al centro visible
+  const cands=[];
+  for(let y=step/2; y<=stageH(); y+=step) for(let x=step/2; x<=stageW(); x+=step)
+    cands.push({x,y,dd:(x-vcx)*(x-vcx)+(y-vcy)*(y-vcy)});
+  cands.sort((a,b)=>a.dd-b.dd);
+  const occ=state.plants.map(pl=>({x:pl.x,y:pl.y,r:(byId[pl.id].dist/100)/2}));
+  const pre=snapshot(); let added=0;
+  for(const cd of cands){
+    if(added>=n) break;
+    let ok=true;
+    for(const o of occ){ const mr=o.r+myR; if((o.x-cd.x)*(o.x-cd.x)+(o.y-cd.y)*(o.y-cd.y) < mr*mr){ ok=false; break; } }
+    if(ok){ state.plants.push({uid:"p"+(state.nextId++), id, x:+cd.x.toFixed(3), y:+cd.y.toFixed(3)});
+      occ.push({x:cd.x,y:cd.y,r:myR}); added++; }
   }
-  save(); renderStage();
+  if(!added){ alert("No hay espacio libre para más plantas de ese tamaño. Agrandá el terreno o moviste algunas."); return; }
+  pushUndo(pre); save(); renderStage();
   if(window.innerWidth<880) closeCatalog();
 }
 /* colocar en el centro visible (tap-to-place en mobile) */
@@ -1068,6 +1075,18 @@ function rotGroup(p){
 function plantsInBoard(b){
   return state.plants.filter(pl=> pl.x>=b.x-0.01 && pl.x<=b.x+b.L+0.01 && pl.y>=b.y-0.01 && pl.y<=b.y+b.W+0.01);
 }
+const ROT_ICON={fruto:"🍅",hoja:"🥬",raiz:"🥕",leguminosa:"🫛"};
+const ROT_SHORT={fruto:"Fruto",hoja:"Hoja",raiz:"Raíz / bulbo",leguminosa:"Leguminosa"};
+function rotCycleHTML(dom){
+  const nextG = dom ? ROT_INTA.next[dom] : null;
+  const steps = ROT_INTA.seq.map(g=>{
+    const cls = g===dom ? "now" : (g===nextG ? "next" : "");
+    const tag = g===dom ? `<span class="rs-tag now">estás acá</span>`
+              : (g===nextG ? `<span class="rs-tag next">lo que sigue</span>` : "");
+    return `<div class="rotstep ${cls}"><div class="rs-ic">${ROT_ICON[g]}</div><div class="rs-lb">${ROT_SHORT[g]}</div>${tag}</div>`;
+  }).join(`<div class="rotarrow">→</div>`);
+  return `<div class="rotcycle">${steps}<div class="rotloop" title="el ciclo vuelve a empezar">↻</div></div>`;
+}
 function openBoardAnalysis(b){
   const inside=plantsInBoard(b);
   if(!inside.length){
@@ -1098,7 +1117,6 @@ function openBoardAnalysis(b){
   if(famRepetidas.length){
     reco += `<div class="warn-box">⚠️ Familia(s) con varias plantas: <b>${famRepetidas.join(", ")}</b>. No vuelvas a plantar esa familia acá por unos ${ROT_INTA.anios} años (evita plagas y enfermedades del suelo).</div>`;
   }
-  const ciclo = ROT_INTA.seq.map(g=>`${g===dom?"<b>":""}${ROT_INTA.label[g].split(" (")[0]}${g===dom?" ⬅ ahora</b>":""}`).join(" → ");
   const fuentesHtml = ROT_INTA.fuentes.length
     ? `<div class="m-foot">Rotación según criterio INTA / ProHuerta. Fuentes: ${ROT_INTA.fuentes.map((u,i)=>`<a href="${u}" target="_blank" rel="noopener">[${i+1}]</a>`).join(" ")}</div>`
     : `<div class="m-foot">Rotación según criterio agroecológico de INTA / ProHuerta. Orientativo: verificá la cartilla de tu zona.</div>`;
@@ -1109,7 +1127,7 @@ function openBoardAnalysis(b){
       <h5 class="asec">Plantas en el bancal</h5><div class="cal-list">${plantList}</div>
       <h5 class="asec">Familias presentes</h5><div class="cal-list">${famList}</div>
       <h5 class="asec">Ciclo de rotación (INTA)</h5>
-      <div style="font-size:12.5px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:9px 11px">${ciclo}</div>
+      ${rotCycleHTML(dom)}
       <h5 class="asec">Recomendación</h5>${reco}
       ${optimizerSection(b, Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0])}
       <details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--green-dark);font-weight:600">¿Por qué rotar? (INTA)</summary>
