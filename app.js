@@ -669,6 +669,7 @@ function bind(){
   // modal: mes del calendario, optimizador y compañera/planta clickeable
   $("#modalBody").addEventListener("click",e=>{
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    const fa=e.target.closest("#optFillAsoc"); if(fa && optBoard){ fillAssoc(optBoard, fa.dataset.a, fa.dataset.b); return; }
     const f=e.target.closest("#optFill,#optFillT"); if(f && optBoard){ fillBoard(optBoard, f.dataset.id, f.dataset.mode); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
   });
@@ -1138,6 +1139,8 @@ function renderOptResult(b, id){
     : `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">Distancia entre plantas: ${p.dist} cm (sin marco INTA tabulado para esta especie).</div>`;
   return `
     ${intaInfo}
+    ${assocSection(b, id)}
+    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 6px">O monocultivo (solo ${p.nombre})</div>
     <div class="opt-grid">
       <div class="opt-card on"><div class="opt-n">${lineN}</div><div class="opt-t">En línea (marco INTA) <span>INTA</span></div></div>
       <div class="opt-card"><div class="opt-n">${tresN}</div><div class="opt-t">Tresbolillo (denso) <span class="no">no INTA</span></div></div>
@@ -1160,6 +1163,86 @@ function fillBoard(b, id, mode){
   pos.forEach(pt=>{ state.plants.push({uid:"p"+(state.nextId++), id, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}); });
   save(); renderStage();
   openBoardAnalysis(b);   // refresca el panel con el nuevo conteo
+}
+
+/* ---- asociación de cultivos / policultivo (criterio INTA) ---- */
+const FAST_LOW = ["rabanito","rucula","lechuga","espinaca","cilantro"];   // rápidas / bajas
+const TALL_SLOW = ["maiz","puerro","tomate","repollo","zanahoria","brocoli","kale","cebolla"]; // altas / lentas
+function isFastLow(id){ const d=DET(id); return (d.diasCosecha&&d.diasCosecha<=55)||(d.alturaCm&&d.alturaCm<=25); }
+function isTallSlow(id){ const d=DET(id); return (d.alturaCm&&d.alturaCm>=60)||(d.diasCosecha&&d.diasCosecha>=85); }
+function compatibleAssoc(aId,bId){
+  if(aId===bId) return false;
+  const A=byId[aId],B=byId[bId]; if(!A||!B) return false;
+  if(A.grupo===B.grupo) return false;                       // distinta familia (INTA)
+  const da=DET(aId),db=DET(bId), nA=plantBaseName(A), nB=plantBaseName(B);
+  const inList=(l,n)=>(l||[]).some(x=>{const xl=x.toLowerCase().trim();return xl===n||xl.includes(n)||n.includes(xl);});
+  return !(inList(da.compaNeg,nB)||inList(db.compaNeg,nA));  // sin antagonismo
+}
+function pickPartner(principalId, wantFastLow){
+  const list = wantFastLow ? FAST_LOW : TALL_SLOW;
+  const pos = (DET(principalId).compaPos||[]).map(x=>findPlantByName(x)).filter(Boolean).map(p=>p.id);
+  const ordered = [...list.filter(id=>pos.includes(id)), ...list.filter(id=>!pos.includes(id))];
+  for(const id of ordered) if(byId[id] && compatibleAssoc(principalId,id) && (wantFastLow?isFastLow(id):isTallSlow(id))) return id;
+  for(const id of ordered) if(byId[id] && compatibleAssoc(principalId,id)) return id;
+  return null;
+}
+function chooseAssoc(principalId){    // -> {A:alto/lento, B:bajo/rápido} o null
+  let A,B;
+  if(isFastLow(principalId) && !isTallSlow(principalId)){ B=principalId; A=pickPartner(principalId,false); }
+  else { A=principalId; B=pickPartner(principalId,true); }
+  if(!A||!B||A===B) return null;
+  return {A,B};
+}
+function assocLayout(b, aId, bId){
+  const A=byId[aId], B=byId[bId];
+  const dA=A.dist/100, elA=DET(aId).entreLineasCm? Math.max(DET(aId).entreLineasCm/100,dA):dA;
+  const dB=B.dist/100, hpA=dA/2, hpB=dB/2;
+  const posA=[], posB=[];
+  if(b.L<dA || b.W<elA){ if(b.L>=hpA&&b.W>=hpA) posA.push({x:b.L/2,y:b.W/2}); return {posA,posB}; }
+  const ncolsA=Math.floor((b.L-dA)/dA)+1, nrowsA=Math.floor((b.W-elA)/elA)+1, ysA=[];
+  for(let r=0;r<nrowsA;r++){ const y=elA/2+r*elA; ysA.push(y); for(let c=0;c<ncolsA;c++) posA.push({x:hpA+c*dA,y}); }
+  if(ysA.length>=2 && elA>=dB){                               // B en hileras intermedias
+    const ncolsB=Math.floor((b.L-dB)/dB)+1;
+    for(let r=0;r<ysA.length-1;r++){ const y=ysA[r]+elA/2; for(let c=0;c<ncolsB;c++) posB.push({x:hpB+c*dB,y}); }
+  } else if(dA>=dB*1.4){                                      // bancal angosto: intercalar en la misma hilera
+    ysA.forEach(y=>{ for(let c=0;c<ncolsA-1;c++) posB.push({x:hpA+c*dA+dA/2,y}); });
+  }
+  return {posA,posB};
+}
+function chooseAssocLayout(b, principalId){
+  const c=chooseAssoc(principalId); if(!c) return null;
+  const {posA,posB}=assocLayout(b,c.A,c.B);
+  return {A:c.A,B:c.B,posA,posB,countA:posA.length,countB:posB.length};
+}
+function fillAssoc(b, aId, bId){
+  const {posA,posB}=assocLayout(b,aId,bId);
+  if(!posA.length){ alert("No entra la asociación en este bancal."); return; }
+  pushUndo();
+  const insideUids=new Set(plantsInBoard(b).map(x=>x.uid));
+  state.plants=state.plants.filter(x=>!insideUids.has(x.uid));
+  posA.forEach(pt=>state.plants.push({uid:"p"+(state.nextId++), id:aId, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}));
+  posB.forEach(pt=>state.plants.push({uid:"p"+(state.nextId++), id:bId, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}));
+  save(); renderStage(); openBoardAnalysis(b);
+}
+function descPorte(id){ const d=DET(id),t=[]; if(d.alturaCm&&d.alturaCm>=60)t.push("alta"); else if(d.alturaCm&&d.alturaCm<=25)t.push("baja");
+  if(d.diasCosecha&&d.diasCosecha>=85)t.push("lenta"); else if(d.diasCosecha&&d.diasCosecha<=55)t.push("rápida"); return t.join(" y ")||"de porte medio"; }
+function assocSection(b, principalId){
+  const plan=chooseAssocLayout(b, principalId);
+  if(!plan){ return `<div class="assoc-box"><div class="assoc-h">🤝 Asociación de cultivos <span>INTA</span></div>
+    <div class="assoc-txt">No encontré una buena pareja para <b>${byId[principalId].nombre}</b> en el catálogo (misma familia o antagonismo). Probá con otra planta.</div></div>`; }
+  const {A,B,countA,countB}=plan;
+  const total=countA+countB;
+  const note = countB===0
+    ? `<div class="warn-box" style="margin:6px 0 0">El bancal es angosto para intercalar la hilera de ${byId[B].nombre}. Ensanchalo (o usalo como monocultivo abajo).</div>` : "";
+  return `<div class="assoc-box">
+    <div class="assoc-h">🤝 Asociación de cultivos <span>INTA · gran sugerencia</span></div>
+    <div class="assoc-txt">Combiná <b>${byId[A].nombre}</b> (${descPorte(A)}) con <b>${byId[B].nombre}</b> (${descPorte(B)}): intercalás la rápida/baja entre las hileras de la alta/lenta — aprovechás el espacio, cosechás la rápida antes y al ser de distinta familia bajás las plagas. <i>(INTA: asociar distinto porte y velocidad)</i></div>
+    <div class="opt-grid" style="margin-top:7px">
+      <div class="opt-card on"><div class="opt-n">${countA}</div><div class="opt-t">${byId[A].nombre}</div></div>
+      <div class="opt-card on"><div class="opt-n">${countB}</div><div class="opt-t">${byId[B].nombre}</div></div>
+    </div>${note}
+    <button class="btn" id="optFillAsoc" data-a="${A}" data-b="${B}" style="margin-top:7px" ${total?"":"disabled"}>🤝 Ordenar asociación (${countA} + ${countB})</button>
+  </div>`;
 }
 
 /* ---- calendario de siembra ---- */
