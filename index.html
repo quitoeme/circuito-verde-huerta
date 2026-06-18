@@ -164,6 +164,19 @@
   .assoc-h{font-weight:800;color:var(--green-dark);font-size:14px}
   .assoc-h span{font-size:9.5px;background:var(--green);color:#fff;border-radius:10px;padding:1px 7px;font-weight:700;margin-left:6px;white-space:nowrap}
   .assoc-txt{font-size:12.5px;color:var(--ink);line-height:1.45;margin-top:5px}
+  .assoc-lbl{font-size:11px;color:var(--ink-soft);font-weight:700;text-transform:uppercase;letter-spacing:.4px;margin-bottom:4px}
+  .assoc-opts{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+  .assoc-opt{border:1px solid var(--line);background:#fff;border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;color:var(--ink);font-weight:600}
+  .assoc-opt.on{background:var(--green);color:#fff;border-color:var(--green)}
+
+  /* ===== pulido 2026 ===== */
+  .btn,.chip,.plant,.opt-card,.cal-chip,.cal-m,.assoc-opt,.hdr-btn,.info-btn,.season-row .chip{transition:transform .12s ease,background .15s ease,box-shadow .15s ease,border-color .15s ease,color .15s ease}
+  .btn:active,.assoc-opt:active,.chip:active,.cal-chip:active,.info-btn:active{transform:translateY(1px) scale(.98)}
+  input:focus,select:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 3px rgba(63,125,78,.18)}
+  .modal-back,#tutorial,#login-gate{backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+  .modal,.tut-card,.login-card{animation:popIn .22s cubic-bezier(.2,.8,.25,1)}
+  @keyframes popIn{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+  .plant:hover{transform:translateY(-3px)}
 
   .legend{padding:8px 16px;border-top:1px solid var(--line);font-size:10.5px;color:var(--ink-soft);background:var(--paper)}
   .legend span{margin-right:10px;white-space:nowrap}
@@ -351,9 +364,14 @@
     .toolbar .spacer{display:none}
     .stats{right:8px;bottom:8px;min-width:0;max-width:74vw}
     .del-sel{left:8px;top:8px;padding:6px 9px;font-size:11px}
-    .modal{max-height:92vh}
+    /* modal como hoja inferior (bottom-sheet) */
+    .modal-back{align-items:flex-end;padding:0}
+    .modal{max-height:90vh;width:100%;border-radius:20px 20px 0 0;animation:sheetIn .26s cubic-bezier(.2,.8,.25,1)}
     .m-grid{grid-template-columns:1fr}
+    .btn,.chip,.cal-m,.assoc-opt,.cal-chip{min-height:34px}
+    .toolbar .btn,.toolbar select,.toolbar input{min-height:32px}
   }
+  @keyframes sheetIn{from{transform:translateY(100%)}to{transform:none}}
 </style>
 </head>
 <body>

@@ -669,6 +669,9 @@ function bind(){
   // modal: mes del calendario, optimizador y compañera/planta clickeable
   $("#modalBody").addEventListener("click",e=>{
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    const ao=e.target.closest(".assoc-opt"); if(ao && optBoard && assocPrincipal){
+      document.querySelectorAll(".assoc-opt").forEach(x=>x.classList.toggle("on", x===ao));
+      $("#assocBody").innerHTML = renderAssocPair(optBoard, assocPrincipal, ao.dataset.partner); return; }
     const fa=e.target.closest("#optFillAsoc"); if(fa && optBoard){ fillAssoc(optBoard, fa.dataset.a, fa.dataset.b); return; }
     const f=e.target.closest("#optFill,#optFillT"); if(f && optBoard){ fillBoard(optBoard, f.dataset.id, f.dataset.mode); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
@@ -1178,19 +1181,20 @@ function compatibleAssoc(aId,bId){
   const inList=(l,n)=>(l||[]).some(x=>{const xl=x.toLowerCase().trim();return xl===n||xl.includes(n)||n.includes(xl);});
   return !(inList(da.compaNeg,nB)||inList(db.compaNeg,nA));  // sin antagonismo
 }
-function pickPartner(principalId, wantFastLow){
-  const list = wantFastLow ? FAST_LOW : TALL_SLOW;
+function assocCandidates(principalId){    // -> lista de hasta 3 parejas (ids), criterio INTA
+  const principalFast = isFastLow(principalId) && !isTallSlow(principalId);
+  const pool = principalFast ? TALL_SLOW : FAST_LOW;
   const pos = (DET(principalId).compaPos||[]).map(x=>findPlantByName(x)).filter(Boolean).map(p=>p.id);
-  const ordered = [...list.filter(id=>pos.includes(id)), ...list.filter(id=>!pos.includes(id))];
-  for(const id of ordered) if(byId[id] && compatibleAssoc(principalId,id) && (wantFastLow?isFastLow(id):isTallSlow(id))) return id;
-  for(const id of ordered) if(byId[id] && compatibleAssoc(principalId,id)) return id;
-  return null;
+  let cands = pool.filter(id=>byId[id] && compatibleAssoc(principalId,id) && (principalFast?isTallSlow(id):isFastLow(id)));
+  if(cands.length<2) pool.forEach(id=>{ if(byId[id]&&compatibleAssoc(principalId,id)&&!cands.includes(id)) cands.push(id); });
+  cands = [...new Set(cands)].sort((a,b)=>(pos.includes(b)?1:0)-(pos.includes(a)?1:0));
+  return cands.slice(0,3);
 }
-function chooseAssoc(principalId){    // -> {A:alto/lento, B:bajo/rápido} o null
+function assocPairOf(principalId, partnerId){    // decide cuál es A (alto/lento) y cuál B (bajo/rápido)
   let A,B;
-  if(isFastLow(principalId) && !isTallSlow(principalId)){ B=principalId; A=pickPartner(principalId,false); }
-  else { A=principalId; B=pickPartner(principalId,true); }
-  if(!A||!B||A===B) return null;
+  if(isTallSlow(principalId) && !isTallSlow(partnerId)){ A=principalId; B=partnerId; }
+  else if(isTallSlow(partnerId) && !isTallSlow(principalId)){ A=partnerId; B=principalId; }
+  else { A=((DET(principalId).alturaCm||0)>=(DET(partnerId).alturaCm||0))?principalId:partnerId; B=(A===principalId?partnerId:principalId); }
   return {A,B};
 }
 function assocLayout(b, aId, bId){
@@ -1209,11 +1213,6 @@ function assocLayout(b, aId, bId){
   }
   return {posA,posB};
 }
-function chooseAssocLayout(b, principalId){
-  const c=chooseAssoc(principalId); if(!c) return null;
-  const {posA,posB}=assocLayout(b,c.A,c.B);
-  return {A:c.A,B:c.B,posA,posB,countA:posA.length,countB:posB.length};
-}
 function fillAssoc(b, aId, bId){
   const {posA,posB}=assocLayout(b,aId,bId);
   if(!posA.length){ alert("No entra la asociación en este bancal."); return; }
@@ -1226,22 +1225,33 @@ function fillAssoc(b, aId, bId){
 }
 function descPorte(id){ const d=DET(id),t=[]; if(d.alturaCm&&d.alturaCm>=60)t.push("alta"); else if(d.alturaCm&&d.alturaCm<=25)t.push("baja");
   if(d.diasCosecha&&d.diasCosecha>=85)t.push("lenta"); else if(d.diasCosecha&&d.diasCosecha<=55)t.push("rápida"); return t.join(" y ")||"de porte medio"; }
-function assocSection(b, principalId){
-  const plan=chooseAssocLayout(b, principalId);
-  if(!plan){ return `<div class="assoc-box"><div class="assoc-h">🤝 Asociación de cultivos <span>INTA</span></div>
-    <div class="assoc-txt">No encontré una buena pareja para <b>${byId[principalId].nombre}</b> en el catálogo (misma familia o antagonismo). Probá con otra planta.</div></div>`; }
-  const {A,B,countA,countB}=plan;
-  const total=countA+countB;
+let assocPrincipal=null;
+function renderAssocPair(b, principalId, partnerId){
+  const {A,B}=assocPairOf(principalId, partnerId);
+  const {posA,posB}=assocLayout(b,A,B);
+  const countA=posA.length, countB=posB.length, total=countA+countB;
   const note = countB===0
-    ? `<div class="warn-box" style="margin:6px 0 0">El bancal es angosto para intercalar la hilera de ${byId[B].nombre}. Ensanchalo (o usalo como monocultivo abajo).</div>` : "";
-  return `<div class="assoc-box">
-    <div class="assoc-h">🤝 Asociación de cultivos <span>INTA · gran sugerencia</span></div>
-    <div class="assoc-txt">Combiná <b>${byId[A].nombre}</b> (${descPorte(A)}) con <b>${byId[B].nombre}</b> (${descPorte(B)}): intercalás la rápida/baja entre las hileras de la alta/lenta — aprovechás el espacio, cosechás la rápida antes y al ser de distinta familia bajás las plagas. <i>(INTA: asociar distinto porte y velocidad)</i></div>
+    ? `<div class="warn-box" style="margin:6px 0 0">El bancal es angosto para intercalar la hilera de ${byId[B].nombre}; ensanchalo o usá monocultivo.</div>` : "";
+  return `<div class="assoc-txt">Combiná <b>${byId[A].nombre}</b> (${descPorte(A)}) con <b>${byId[B].nombre}</b> (${descPorte(B)}): intercalás la baja/rápida entre las hileras de la alta/lenta — aprovechás el espacio, cosechás la rápida antes y al ser de distinta familia bajás plagas. <i>(criterio INTA)</i></div>
     <div class="opt-grid" style="margin-top:7px">
       <div class="opt-card on"><div class="opt-n">${countA}</div><div class="opt-t">${byId[A].nombre}</div></div>
       <div class="opt-card on"><div class="opt-n">${countB}</div><div class="opt-t">${byId[B].nombre}</div></div>
     </div>${note}
-    <button class="btn" id="optFillAsoc" data-a="${A}" data-b="${B}" style="margin-top:7px" ${total?"":"disabled"}>🤝 Ordenar asociación (${countA} + ${countB})</button>
+    <button class="btn" id="optFillAsoc" data-a="${A}" data-b="${B}" style="margin-top:7px" ${total?"":"disabled"}>🤝 Ordenar asociación (${countA} + ${countB})</button>`;
+}
+function assocSection(b, principalId){
+  assocPrincipal=principalId;
+  const cands=assocCandidates(principalId);
+  if(!cands.length) return `<div class="assoc-box"><div class="assoc-h">🤝 Asociación de cultivos <span>INTA</span></div>
+    <div class="assoc-txt">No encontré una buena pareja para <b>${byId[principalId].nombre}</b> (misma familia o antagonismo). Probá con otra planta.</div></div>`;
+  const partner=cands[0];
+  const chips=cands.map(id=>`<button class="assoc-opt ${id===partner?"on":""}" data-partner="${id}">${byId[id].nombre}</button>`).join("");
+  return `<div class="assoc-box">
+    <div class="assoc-h">🤝 Asociación de cultivos <span>INTA · gran sugerencia</span></div>
+    <div class="assoc-txt" style="margin-bottom:7px">Asociá tu cultivo con otro de <b>distinto porte y velocidad</b> (alto/lento + bajo/rápido) y de otra familia: aprovechás el espacio y bajás plagas.</div>
+    <div class="assoc-lbl">Probá con</div>
+    <div class="assoc-opts">${chips}</div>
+    <div id="assocBody">${renderAssocPair(b, principalId, partner)}</div>
   </div>`;
 }
 
