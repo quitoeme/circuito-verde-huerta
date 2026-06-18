@@ -197,7 +197,7 @@ function undo(){
   const o = JSON.parse(undoStack.pop());
   state.plants=o.plants; state.boards=o.boards; state.terreno=o.terreno; state.nextId=o.nextId;
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
-  selUids.clear(); save(); renderStage(); updateUndoBtn();
+  selUids.clear(); save(); renderStage(); updateUndoBtn(); toast("↶ Deshecho");
 }
 function updateUndoBtn(){ const b=$("#undoBtn"); if(b) b.disabled = undoStack.length===0; }
 
@@ -403,10 +403,12 @@ function refreshSel(){
 }
 function deleteSelection(){
   if(!selUids.size) return;
+  const n=selUids.size;
   pushUndo();
   state.plants=state.plants.filter(x=>!selUids.has(x.uid));
   state.boards=state.boards.filter(x=>!selUids.has(x.uid));
   selUids.clear(); save(); renderStage();
+  toast(`🗑 ${n} elemento${n>1?"s":""} borrado${n>1?"s":""}`);
 }
 function setSelection(uids){ selUids = new Set(uids); refreshSel(); }
 function toggleSel(uid){ selUids.has(uid)?selUids.delete(uid):selUids.add(uid); refreshSel(); }
@@ -642,6 +644,14 @@ function openInfo(id){
   $("#modal").hidden = false;
 }
 function closeInfo(){ $("#modal").hidden = true; }
+function showLegumes(){
+  activeFx = new Set(["nitrogeno"]); activeSeason = new Set(); searchTxt="";
+  const sb=$("#search"); if(sb) sb.value="";
+  document.body.classList.remove("cat-collapsed");
+  renderFilters(); renderSeasonFilter(); renderCatalog();
+  const cat=$("#catalog"); if(cat) cat.scrollTop=0;
+  toast("🫛 Filtré las leguminosas y abonos verdes que fijan nitrógeno");
+}
 
 /* ============================================================
    EVENTOS
@@ -677,6 +687,7 @@ function bind(){
   // modal: mes del calendario, optimizador y compañera/planta clickeable
   $("#modalBody").addEventListener("click",e=>{
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
+    if(e.target.closest("#goLegumes")){ closeInfo(); showLegumes(); return; }
     const ao=e.target.closest(".assoc-opt"); if(ao && optBoard && assocPrincipal){
       document.querySelectorAll(".assoc-opt").forEach(x=>x.classList.toggle("on", x===ao));
       $("#assocBody").innerHTML = renderAssocPair(optBoard, assocPrincipal, ao.dataset.partner); return; }
@@ -819,6 +830,12 @@ function exportDesign(){
    HERRAMIENTAS: snap, duplicar, proyectos, PNG, imprimir, análisis, calendario
    ============================================================ */
 function showModal(html){ $("#modalBody").innerHTML = html; $("#modal").hidden = false; }
+let toastTimer=null;
+function toast(msg){
+  const t=$("#toast"); if(!t) return;
+  t.textContent=msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove("show"), 2000);
+}
 
 /* ---- snap a la grilla ---- */
 let snapOn = false;
@@ -838,6 +855,7 @@ function duplicateSelection(){
     news.push(c.uid);
   });
   setSelection(news); save(); renderStage();
+  toast(`⧉ ${news.length} duplicada${news.length>1?"s":""}`);
 }
 
 /* ---- copiar / cortar / pegar / seleccionar todo / mover ---- */
@@ -887,8 +905,9 @@ function addPlants(id, n){
     if(ok){ state.plants.push({uid:"p"+(state.nextId++), id, x:+cd.x.toFixed(3), y:+cd.y.toFixed(3)});
       occ.push({x:cd.x,y:cd.y,r:myR}); added++; }
   }
-  if(!added){ alert("No hay espacio libre para más plantas de ese tamaño. Agrandá el terreno o moviste algunas."); return; }
+  if(!added){ toast("Sin espacio libre — agrandá el terreno o el bancal"); return; }
   pushUndo(pre); save(); renderStage();
+  toast(`➕ ${added} ${p.nombre}${added>1?"s":""} agregada${added>1?"s":""}`);
   if(window.innerWidth<880) closeCatalog();
 }
 /* colocar en el centro visible (tap-to-place en mobile) */
@@ -918,7 +937,7 @@ function saveProject(){
   const name=(prompt("Nombre del proyecto:", curProj()||"Mi huerta")||"").trim();
   if(!name) return;
   const ps=getProjects(); ps[name]=snapshot(); setProjects(ps); setCurProj(name); renderProjSelect();
-  alert(`Proyecto "${name}" guardado.`);
+  toast(`💾 Proyecto "${name}" guardado`);
 }
 function loadProject(name){
   const ps=getProjects(); if(!ps[name]) return;
@@ -941,8 +960,8 @@ function importJSON(file){
     state.plants=o.plants; state.boards=o.boards||[]; state.terreno=o.terreno||state.terreno;
     state.scale=o.scale||state.scale; state.nextId=o.nextId||1000;
     $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h; selUids.clear(); save(); renderStage();
-    alert("Diseño importado.");
-  }catch(e){ alert("No pude leer ese archivo. Tiene que ser un JSON exportado por Circuito Verde."); } };
+    toast("📁 Diseño importado");
+  }catch(e){ toast("No pude leer ese archivo (JSON inválido)"); } };
   r.readAsText(file);
 }
 
@@ -1118,7 +1137,7 @@ function openBoardAnalysis(b){
     reco = `<div class="ok-box"><b>Próxima temporada:</b> este bancal fue de <b>${ROT_INTA.label[dom].toLowerCase()}</b>. Según la rotación INTA, seguí con <b>${ROT_INTA.label[ng].toLowerCase()}</b> — ej.: ${ROT_INTA.ejemplos[ng]}.</div>`;
     reco += hasLeg
       ? `<div class="ok-box">✅ Hay leguminosas que aportan nitrógeno: el suelo queda en buenas condiciones para el próximo ciclo.</div>`
-      : `<div class="warn-box">🌱 No hay leguminosas. Antes del próximo cultivo exigente, sembrá una <b>leguminosa o abono verde</b> (arveja, haba, trébol, vicia) para reponer nitrógeno.</div>`;
+      : `<div class="warn-box">🌱 No hay leguminosas. Antes del próximo cultivo exigente, conviene sembrar una <b>leguminosa o abono verde</b> (arveja, haba, trébol, vicia) para reponer nitrógeno.<br><button class="btn ghost" id="goLegumes" style="margin-top:7px">🫛 Ver leguminosas y abonos verdes</button></div>`;
   }
   if(famRepetidas.length){
     reco += `<div class="warn-box">⚠️ Familia(s) con varias plantas: <b>${famRepetidas.join(", ")}</b>. No vuelvas a plantar esa familia acá por unos ${ROT_INTA.anios} años (evita plagas y enfermedades del suelo).</div>`;
@@ -1155,16 +1174,19 @@ function packPositions(L,W,dPlant,dRow,mode){
     const rs=dPlant*SQRT3_2;                       // separación entre hileras (equilátero)
     if(W<dPlant || L<dPlant){ if(L>=hp&&W>=hp) pos.push({x:L/2,y:W/2}); return pos; }
     const nrows=Math.floor((W-dPlant)/rs)+1;
+    const startY=(W-(nrows-1)*rs)/2;               // centrar verticalmente
     for(let r=0;r<nrows;r++){
-      const y=hp+r*rs, off=(r%2)?hp:0;
+      const y=startY+r*rs, off=(r%2)?hp:0;
       const ncols=Math.floor((L-dPlant-off)/dPlant)+1;
-      for(let c=0;c<ncols;c++){ const x=hp+off+c*dPlant; if(x<=L-hp+1e-6) pos.push({x,y}); }
+      const startX=(L-((ncols-1)*dPlant)-off)/2 + off;   // centrar (con corrimiento)
+      for(let c=0;c<ncols;c++){ const x=startX+c*dPlant; if(x>=hp-1e-6 && x<=L-hp+1e-6) pos.push({x,y}); }
     }
   } else {                                          // marco real / en línea (rectangular)
     const dr=dRow||dPlant, hr=dr/2;
     if(W<dr || L<dPlant){ if(L>=hp&&W>=hr) pos.push({x:L/2,y:W/2}); return pos; }
     const ncols=Math.floor((L-dPlant)/dPlant)+1, nrows=Math.floor((W-dr)/dr)+1;
-    for(let r=0;r<nrows;r++) for(let c=0;c<ncols;c++) pos.push({x:hp+c*dPlant, y:hr+r*dr});
+    const startX=(L-(ncols-1)*dPlant)/2, startY=(W-(nrows-1)*dr)/2;   // centrar la grilla
+    for(let r=0;r<nrows;r++) for(let c=0;c<ncols;c++) pos.push({x:startX+c*dPlant, y:startY+r*dr});
   }
   return pos;
 }
@@ -1185,6 +1207,7 @@ function renderOptResult(b, id){
   const lineN=packPositions(b.L,b.W,d,el,"sq").length;
   const tresN=packPositions(b.L,b.W,d,d,"tres").length;
   const elCm=Math.round(el*100);
+  const lrows=Math.max(1, b.W<el?1:Math.floor((b.W-el)/el)+1), lcols=Math.max(1, b.L<d?1:Math.floor((b.L-d)/d)+1);
   const intaInfo = det.formaSiembra
     ? `<div style="font-size:12px;background:var(--green-soft);border:1px solid #cfe0c8;border-radius:9px;padding:7px 10px;margin-bottom:8px">
          <b>INTA</b> · Forma de siembra: <b>${det.formaSiembra}</b> · ${det.implanteInta||""} · marco ${p.dist} × ${elCm} cm (entre plantas × entre hileras)</div>`
@@ -1197,7 +1220,7 @@ function renderOptResult(b, id){
       <div class="opt-card on"><div class="opt-n">${lineN}</div><div class="opt-t">En línea (marco INTA) <span>INTA</span></div></div>
       <div class="opt-card"><div class="opt-n">${tresN}</div><div class="opt-t">Tresbolillo (denso) <span class="no">no INTA</span></div></div>
     </div>
-    <div style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 8px">El marco <b>en línea</b> respeta la distancia entre hileras de INTA. El <b>tresbolillo</b> (hileras alternadas) es criterio hortícola —no INTA— y densifica ~10-15% si el cultivo lo tolera.</div>
+    <div style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 8px">En línea = <b>${lrows} hilera${lrows>1?"s":""} × ${lcols}</b> (${p.dist} cm entre plantas, ${elCm} cm entre hileras — INTA). El <b>tresbolillo</b> alterna las hileras: criterio hortícola (no INTA), ~10-15% más si el cultivo lo tolera.</div>
     <button class="btn" id="optFill" data-id="${id}" data-mode="linea">🌱 Ordenar ${lineN} × ${p.nombre} (marco INTA)</button>
     <button class="btn ghost" id="optFillT" data-id="${id}" data-mode="tres" style="margin-top:6px">…o ${tresN} en tresbolillo (denso · no INTA)</button>`;
 }
@@ -1213,8 +1236,8 @@ function fillBoard(b, id, mode){
   state.plants=state.plants.filter(x=>!insideUids.has(x.uid));
   // colocar en la disposición óptima
   pos.forEach(pt=>{ state.plants.push({uid:"p"+(state.nextId++), id, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}); });
-  save(); renderStage();
-  openBoardAnalysis(b);   // refresca el panel con el nuevo conteo
+  save(); renderStage(); closeInfo();
+  toast(`✓ ${pos.length} × ${p.nombre} ordenadas en el bancal`);
 }
 
 /* ---- asociación de cultivos / policultivo (criterio INTA) ---- */
@@ -1253,12 +1276,13 @@ function assocLayout(b, aId, bId){
   const posA=[], posB=[];
   if(b.L<dA || b.W<elA){ if(b.L>=hpA&&b.W>=hpA) posA.push({x:b.L/2,y:b.W/2}); return {posA,posB}; }
   const ncolsA=Math.floor((b.L-dA)/dA)+1, nrowsA=Math.floor((b.W-elA)/elA)+1, ysA=[];
-  for(let r=0;r<nrowsA;r++){ const y=elA/2+r*elA; ysA.push(y); for(let c=0;c<ncolsA;c++) posA.push({x:hpA+c*dA,y}); }
+  const startXA=(b.L-(ncolsA-1)*dA)/2, startYA=(b.W-(nrowsA-1)*elA)/2;   // centrar A
+  for(let r=0;r<nrowsA;r++){ const y=startYA+r*elA; ysA.push(y); for(let c=0;c<ncolsA;c++) posA.push({x:startXA+c*dA,y}); }
   if(ysA.length>=2 && elA>=dB){                               // B en hileras intermedias
-    const ncolsB=Math.floor((b.L-dB)/dB)+1;
-    for(let r=0;r<ysA.length-1;r++){ const y=ysA[r]+elA/2; for(let c=0;c<ncolsB;c++) posB.push({x:hpB+c*dB,y}); }
+    const ncolsB=Math.floor((b.L-dB)/dB)+1, startXB=(b.L-(ncolsB-1)*dB)/2;
+    for(let r=0;r<ysA.length-1;r++){ const y=ysA[r]+elA/2; for(let c=0;c<ncolsB;c++) posB.push({x:startXB+c*dB,y}); }
   } else if(dA>=dB*1.4){                                      // bancal angosto: intercalar en la misma hilera
-    ysA.forEach(y=>{ for(let c=0;c<ncolsA-1;c++) posB.push({x:hpA+c*dA+dA/2,y}); });
+    ysA.forEach(y=>{ for(let c=0;c<ncolsA-1;c++) posB.push({x:startXA+c*dA+dA/2,y}); });
   }
   return {posA,posB};
 }
@@ -1270,7 +1294,8 @@ function fillAssoc(b, aId, bId){
   state.plants=state.plants.filter(x=>!insideUids.has(x.uid));
   posA.forEach(pt=>state.plants.push({uid:"p"+(state.nextId++), id:aId, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}));
   posB.forEach(pt=>state.plants.push({uid:"p"+(state.nextId++), id:bId, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}));
-  save(); renderStage(); openBoardAnalysis(b);
+  save(); renderStage(); closeInfo();
+  toast(`✓ ${posA.length} ${byId[aId].nombre} + ${posB.length} ${byId[bId].nombre} en el bancal`);
 }
 function descPorte(id){ const d=DET(id),t=[]; if(d.alturaCm&&d.alturaCm>=60)t.push("alta"); else if(d.alturaCm&&d.alturaCm<=25)t.push("baja");
   if(d.diasCosecha&&d.diasCosecha>=85)t.push("lenta"); else if(d.diasCosecha&&d.diasCosecha<=55)t.push("rápida"); return t.join(" y ")||"de porte medio"; }

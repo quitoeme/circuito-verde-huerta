@@ -277,6 +277,12 @@
   #analysisBtn{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
   #analysisBtn:hover{background:#cf7c1f;border-color:#cf7c1f}
 
+  /* toast de feedback */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(14px);
+    background:var(--green-dark);color:#fff;padding:10px 18px;border-radius:24px;font-size:13.5px;font-weight:700;
+    box-shadow:0 10px 28px rgba(0,0,0,.28);z-index:600;opacity:0;pointer-events:none;transition:.24s cubic-bezier(.2,.8,.25,1);max-width:90vw}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
   /* drag ghost */
   #ghost{position:fixed;pointer-events:none;z-index:999;opacity:.85;transform:translate(-50%,-50%);display:none}
   #ghost svg{width:46px;height:46px}
@@ -557,6 +563,7 @@
 </main>
 
 <div id="ghost"></div>
+<div id="toast"></div>
 
 <!-- modal de detalles de planta -->
 <div id="modal" class="modal-back" hidden>
