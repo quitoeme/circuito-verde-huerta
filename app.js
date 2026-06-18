@@ -689,15 +689,13 @@ function bind(){
     const m=e.target.closest("[data-m]"); if(m){ calMonth=+m.dataset.m; renderCalendar(); return; }
     const tb=e.target.closest("[data-btab]"); if(tb && boardAnaB){ boardTab=tb.dataset.btab; showModal(boardAnaHTML(boardAnaB)); return; }
     if(e.target.closest("#goLegumes")){ closeInfo(); showLegumes(); return; }
-    const ao=e.target.closest(".assoc-opt"); if(ao && optBoard && assocPrincipal){
-      document.querySelectorAll(".assoc-opt").forEach(x=>x.classList.toggle("on", x===ao));
-      $("#assocBody").innerHTML = renderAssocPair(optBoard, assocPrincipal, ao.dataset.partner); return; }
-    const fa=e.target.closest("#optFillAsoc"); if(fa && optBoard){ fillAssoc(optBoard, fa.dataset.a, fa.dataset.b); return; }
-    const f=e.target.closest("#optFill,#optFillT"); if(f && optBoard){ fillBoard(optBoard, f.dataset.id, f.dataset.mode); return; }
+    const ob=e.target.closest(".optbtn"); if(ob && optBoard && !ob.disabled){ fillMulti(optBoard, optSel, ob.dataset.fillmode); return; }
+    const rm=e.target.closest(".selchip"); if(rm && optBoard){ optSel=optSel.filter(x=>x!==rm.dataset.rm); refreshOpt(); return; }
+    if(e.target.closest("#optSuggest") && optBoard){ suggestCompanion(); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
   });
   $("#modalBody").addEventListener("change",e=>{
-    if(e.target.id==="optPlant" && optBoard){ $("#optResult").innerHTML = renderOptResult(optBoard, e.target.value); }
+    if(e.target.id==="optAdd" && optBoard && e.target.value){ if(!optSel.includes(e.target.value)) optSel.push(e.target.value); refreshOpt(); }
   });
   // arrastrar del catálogo (mouse) / tocar para colocar (touch)
   $("#catalog").addEventListener("pointerdown",e=>{
@@ -1129,9 +1127,9 @@ function renderBoardTab(b, tab){ return tab==="rotacion" ? rotacionTabHTML(b) : 
 function plantarTabHTML(b){
   const inside=plantsInBoard(b);
   const counts={}; inside.forEach(pl=>counts[pl.id]=(counts[pl.id]||0)+1);
-  const def = Object.keys(counts).sort((a,b)=>counts[b]-counts[a])[0] || "lechuga";
+  const def = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
   return `<div style="padding:8px 18px 16px">
-    <div class="tip-box">Elegí <b>qué querés plantar</b> y te calculo <b>cuántas entran y la mejor forma de acomodarlas</b> (con las distancias de INTA). Después tocá <b>Ordenar</b> y las ubica solas.</div>
+    <div class="tip-box">Elegí <b>qué querés plantar</b> (una o varias) y te calculo <b>cuántas entran y la mejor forma de acomodarlas</b> con las distancias de INTA. Tocá una opción y las ubica solas. 🌱</div>
     ${optimizerSection(b, def)}
   </div>`;
 }
@@ -1195,54 +1193,88 @@ function packPositions(L,W,dPlant,dRow,mode){
   }
   return pos;
 }
-function optPlantOptions(selId){
-  return PLANTS.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre))
-    .map(p=>`<option value="${p.id}" ${p.id===selId?"selected":""}>${p.nombre} (${p.dist} cm)</option>`).join("");
+/* ---- selección múltiple de especies para el bancal ---- */
+let optSel = [];
+function optimizerSection(b, defIds){
+  optSel = (defIds && defIds.length) ? [...new Set(defIds)] : ["lechuga"];
+  return `<h5 class="asec">📐 ¿Qué querés plantar acá?</h5>
+    <div id="optSelWrap">${renderOptSel()}</div>
+    <div id="optResult">${renderOptResult(b)}</div>`;
 }
-function optimizerSection(b, defId){
-  return `<h5 class="asec">📐 Optimizar siembra (aprovechar el espacio)</h5>
-    <div style="font-size:12.5px;margin-bottom:6px">Planta:
-      <select id="optPlant" style="padding:4px 6px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;max-width:200px">${optPlantOptions(defId)}</select></div>
-    <div id="optResult">${renderOptResult(b, defId)}</div>`;
+function renderOptSel(){
+  const chips = optSel.length
+    ? optSel.map(id=>`<button class="selchip" data-rm="${id}">${byId[id].nombre} ✕</button>`).join("")
+    : `<span class="cal-empty">Elegí al menos una planta…</span>`;
+  const opts = PLANTS.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .filter(p=>!optSel.includes(p.id))
+    .map(p=>`<option value="${p.id}">${p.nombre} (${p.dist} cm)</option>`).join("");
+  return `<div class="selchips">${chips}</div>
+    <div class="selctrls">
+      <select id="optAdd"><option value="">＋ agregar planta…</option>${opts}</select>
+      <button class="btn ghost" id="optSuggest" title="Sumar una buena compañera (INTA)">🤝 Sugerir compañera</button>
+    </div>`;
 }
-function renderOptResult(b, id){
-  const p=byId[id]; if(!p) return "";
-  const det=DET(id), d=p.dist/100;
-  const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;   // entre hileras (INTA) ≥ entre plantas
-  const lineN=packPositions(b.L,b.W,d,el,"sq").length;
-  const tresN=packPositions(b.L,b.W,d,el,"tres").length;
-  const elCm=Math.round(el*100);
-  const lrows=Math.max(1, b.W<el?1:Math.floor((b.W-el)/el)+1), lcols=Math.max(1, b.L<d?1:Math.floor((b.L-d)/d)+1);
-  const intaInfo = det.formaSiembra
-    ? `<div style="font-size:12px;background:var(--green-soft);border:1px solid #cfe0c8;border-radius:9px;padding:7px 10px;margin-bottom:8px">
-         <b>INTA</b> · Forma de siembra: <b>${det.formaSiembra}</b> · ${det.implanteInta||""} · marco ${p.dist} × ${elCm} cm (entre plantas × entre hileras)</div>`
-    : `<div style="font-size:12px;color:var(--ink-soft);margin-bottom:8px">Distancia entre plantas: ${p.dist} cm (sin marco INTA tabulado para esta especie).</div>`;
+function renderOptResult(b){
+  if(!optSel.length) return `<div class="cal-empty" style="padding:10px 0">Agregá plantas arriba para calcular cuántas entran.</div>`;
+  const line=multiLayout(b, optSel, "sq"), tres=multiLayout(b, optSel, "tres");
+  const mono = optSel.length===1;
+  const card=(title, plan, mode, badge, badgeCls)=>{
+    const bd = plan.perSpecies.map(s=>`${s.n} ${byId[s.id].nombre}`).join(" · ") || "no entra";
+    return `<button class="opt-card optbtn ${plan.total?"":"disabled"}" data-fillmode="${mode}" ${plan.total?"":"disabled"}>
+      <div class="opt-n">${plan.total}</div>
+      <div class="opt-t">${title} <span class="${badgeCls}">${badge}</span></div>
+      <div class="opt-bd">${bd}</div>
+      <div class="opt-cta">tocá para plantar →</div>
+    </button>`;
+  };
   return `
-    ${intaInfo}
-    ${assocSection(b, id)}
-    <div style="font-size:11px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 6px">O monocultivo (solo ${p.nombre})</div>
+    <div style="font-size:11.5px;color:var(--ink-soft);margin:8px 0 6px">${mono?"Elegí cómo ordenarla":"Las acomodo por hileras, alternando las especies"} y respetando las distancias de INTA. <b>Tocá una opción para plantar</b>:</div>
     <div class="opt-grid">
-      <div class="opt-card on"><div class="opt-n">${lineN}</div><div class="opt-t">En línea (marco INTA) <span>INTA</span></div></div>
-      <div class="opt-card"><div class="opt-n">${tresN}</div><div class="opt-t">Tresbolillo (denso) <span class="no">no INTA</span></div></div>
-    </div>
-    <div style="font-size:11.5px;color:var(--ink-soft);margin:6px 0 8px">En línea = <b>${lrows} hilera${lrows>1?"s":""} × ${lcols}</b> (${p.dist} cm entre plantas, ${elCm} cm entre hileras — INTA). El <b>tresbolillo</b> alterna las hileras: criterio hortícola (no INTA), ~10-15% más si el cultivo lo tolera.</div>
-    <button class="btn" id="optFill" data-id="${id}" data-mode="linea">🌱 Ordenar ${lineN} × ${p.nombre} (marco INTA)</button>
-    <button class="btn ghost" id="optFillT" data-id="${id}" data-mode="tres" style="margin-top:6px">…o ${tresN} en tresbolillo (denso · no INTA)</button>`;
+      ${card("🌱 En línea (marco INTA)", line, "sq", "INTA", "")}
+      ${card("🔼 Tresbolillo (denso)", tres, "tres", "no INTA", "no")}
+    </div>`;
 }
-function fillBoard(b, id, mode){
-  const p=byId[id]; if(!p) return;
-  const det=DET(id), d=p.dist/100;
-  const el = det.entreLineasCm ? Math.max(det.entreLineasCm/100, d) : d;
-  const pos=packPositions(b.L,b.W,d,el,(mode==="tres"?"tres":"sq"));
-  if(!pos.length){ alert("No entra ninguna planta de ese tamaño en este bancal."); return; }
+/* disposición de varias especies: hileras round-robin, cada una a su distancia INTA */
+function multiLayout(b, ids, mode){
+  const sp = ids.map(id=>{ const d=byId[id].dist/100; const el=DET(id).entreLineasCm?Math.max(DET(id).entreLineasCm/100,d):d; return {id,d,el}; });
+  const positions=[], cnt={}; ids.forEach(id=>cnt[id]=0);
+  const n=sp.length; let y=0, i=0, rows=0, fails=0, guard=0;
+  while(fails<n && guard<600){
+    guard++;
+    const s=sp[i%n]; i++;
+    if(y + s.el <= b.W + 1e-6){
+      const cy=y+s.el/2, off=(mode==="tres" && rows%2===1)?s.d/2:0;
+      const ncols=Math.floor((b.L - s.d - off)/s.d)+1;
+      const startX=(b.L-((ncols-1)*s.d)-off)/2+off;
+      for(let c=0;c<ncols;c++){ const x=startX+c*s.d; if(x>=s.d/2-1e-6 && x<=b.L-s.d/2+1e-6){ positions.push({id:s.id,x,y:cy}); cnt[s.id]++; } }
+      rows++; y+=s.el; fails=0;
+    } else fails++;
+  }
+  const offY=Math.max(0,(b.W-y)/2);                 // centrar verticalmente el bloque
+  positions.forEach(p=>p.y+=offY);
+  return { total:positions.length, perSpecies: ids.map(id=>({id,n:cnt[id]})).filter(x=>x.n>0), positions };
+}
+function fillMulti(b, ids, mode){
+  const plan=multiLayout(b, ids, mode);
+  if(!plan.total){ toast("No entra ninguna en este bancal — agrandalo"); return; }
   pushUndo();
-  // quitar plantas que ya estaban dentro del bancal
   const insideUids=new Set(plantsInBoard(b).map(x=>x.uid));
   state.plants=state.plants.filter(x=>!insideUids.has(x.uid));
-  // colocar en la disposición óptima
-  pos.forEach(pt=>{ state.plants.push({uid:"p"+(state.nextId++), id, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}); });
+  plan.positions.forEach(pt=>state.plants.push({uid:"p"+(state.nextId++), id:pt.id, x:+(b.x+pt.x).toFixed(3), y:+(b.y+pt.y).toFixed(3)}));
   save(); renderStage(); closeInfo();
-  toast(`✓ ${pos.length} × ${p.nombre} ordenadas en el bancal`);
+  const bd=plan.perSpecies.map(s=>`${s.n} ${byId[s.id].nombre}`).join(" + ");
+  toast(`✓ Plantado: ${bd}`);
+}
+function refreshOpt(){
+  const w=$("#optSelWrap"); if(w) w.innerHTML=renderOptSel();
+  const r=$("#optResult"); if(r && optBoard) r.innerHTML=renderOptResult(optBoard);
+}
+function suggestCompanion(){
+  const base=optSel[0]; if(!base){ toast("Agregá primero una planta"); return; }
+  const cands=assocCandidates(base).filter(id=>!optSel.includes(id));
+  if(!cands.length){ toast("No encontré una compañera nueva para sumar"); return; }
+  optSel.push(cands[0]); refreshOpt();
+  toast(`🤝 Sumé ${byId[cands[0]].nombre} (buena compañera, distinta familia)`);
 }
 
 /* ---- asociación de cultivos / policultivo (criterio INTA) ---- */
