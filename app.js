@@ -219,7 +219,10 @@ function plantCard(p){
     <div class="dist">⟷ ${p.dist} cm</div>
     <div class="fx">${p.funciones.map(f=>FX[f]||"").join("")}${p.inv?"🏠":""}</div>
     ${met}
-    <button class="info-btn" data-info="${p.id}">＋ info</button>
+    <div class="card-actions">
+      <button class="info-btn" data-info="${p.id}">info</button>
+      <button class="add-btn" data-add="${p.id}" title="Agregar al lienzo · Shift = 5 · Ctrl = 10">＋</button>
+    </div>
   </div>`;
 }
 function passesFilter(p){
@@ -663,9 +666,10 @@ function bind(){
     const s=chip.dataset.season; activeSeason.has(s)?activeSeason.delete(s):activeSeason.add(s);
     renderSeasonFilter(); renderCatalog();
   });
-  // botón + info
+  // botones de la tarjeta: + info y ➕ agregar (Shift=5, Ctrl=10)
   $("#catalog").addEventListener("click",e=>{
-    const ib=e.target.closest(".info-btn"); if(ib){ openInfo(ib.dataset.info); }
+    const ib=e.target.closest(".info-btn"); if(ib){ openInfo(ib.dataset.info); return; }
+    const ab=e.target.closest(".add-btn"); if(ab){ const n=e.shiftKey?5:((e.ctrlKey||e.metaKey)?10:1); addPlants(ab.dataset.add, n); }
   });
   // cerrar modal
   $("#modalClose").addEventListener("click",closeInfo);
@@ -685,7 +689,7 @@ function bind(){
   });
   // arrastrar del catálogo (mouse) / tocar para colocar (touch)
   $("#catalog").addEventListener("pointerdown",e=>{
-    if(e.target.closest(".info-btn")) return;
+    if(e.target.closest(".info-btn,.add-btn")) return;
     const card=e.target.closest(".plant"); if(!card) return;
     if(e.pointerType==="touch"){
       // en touch: tap = colocar (permitimos scroll del listado si arrastra el dedo)
@@ -862,6 +866,23 @@ function nudge(dx,dy){
     it.ref.x=clamp(+(it.ref.x+dx).toFixed(3),0,maxX); it.ref.y=clamp(+(it.ref.y+dy).toFixed(3),0,maxY);
   });
   save(); renderStage();
+}
+/* agregar N plantas en una grilla prolija cerca del centro visible */
+function addPlants(id, n){
+  const p=byId[id]; if(!p) return;
+  const s=state.scale, d=Math.max(p.dist/100, 0.1);
+  const cx=(stageWrap.scrollLeft + Math.min(stageWrap.clientWidth, stage.offsetWidth)/2)/s;
+  const cy=(stageWrap.scrollTop  + Math.min(stageWrap.clientHeight, stage.offsetHeight)/2)/s;
+  const cols=Math.max(1, Math.ceil(Math.sqrt(n)));
+  pushUndo();
+  for(let i=0;i<n;i++){
+    const c=i%cols, r=Math.floor(i/cols);
+    const x=clamp(snapVal(cx + (c-(cols-1)/2)*d), 0, stageW());
+    const y=clamp(snapVal(cy + (r-(Math.ceil(n/cols)-1)/2)*d), 0, stageH());
+    state.plants.push({uid:"p"+(state.nextId++), id, x:+x.toFixed(3), y:+y.toFixed(3)});
+  }
+  save(); renderStage();
+  if(window.innerWidth<880) closeCatalog();
 }
 /* colocar en el centro visible (tap-to-place en mobile) */
 function placeAtVisibleCenter(id){
