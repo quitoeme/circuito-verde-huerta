@@ -172,6 +172,7 @@ let selUids = new Set();                            // selección múltiple (uid
 
 const $ = s => document.querySelector(s);
 const stage = $("#stage"), stageWrap = $("#stageWrap"), gridC = $("#grid");
+const norm = s => (s||"").toString().normalize("NFD").replace(/[̀-ͯ]/g,"").toLowerCase().trim();  // sin acentos
 
 /* ---------- persistencia ---------- */
 function saveLocal(){ try{ localStorage.setItem("circuitoVerde", JSON.stringify(state)); }catch(e){} }
@@ -227,8 +228,8 @@ function plantCard(p){
 }
 function passesFilter(p){
   if(searchTxt){
-    const hay = (p.nombre+" "+p.cientifico+" "+p.familia+" "+p.grupo+" "+p.categoria+" "+
-      p.funciones.map(f=>FX_NAME[f]).join(" ")).toLowerCase();
+    const hay = norm(p.nombre+" "+p.cientifico+" "+p.familia+" "+p.grupo+" "+p.categoria+" "+
+      p.funciones.map(f=>FX_NAME[f]).join(" "));
     if(!hay.includes(searchTxt)) return false;
   }
   if(activeFx.size){
@@ -381,7 +382,7 @@ function boardEl(b){
       <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="rot" title="Rotar 90°">⟳</button>
       <button class="del" title="Quitar bancal">✕</button>
-      <button class="ana" title="Analizar y optimizar este bancal (rotación INTA + cuántas plantas entran)">🔬 Analizar</button>
+      <button class="ana" title="Diseñar este bancal: elegí qué plantar y te calculo la mejor forma (+ rotación INTA)">📐 Diseñar</button>
       <span class="handle" title="Redimensionar"></span>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
@@ -663,7 +664,7 @@ function bind(){
     b.classList.add("active"); view=b.dataset.view; renderCatalog();
   }));
   // búsqueda
-  $("#search").addEventListener("input",e=>{ searchTxt=e.target.value.trim().toLowerCase(); renderCatalog(); });
+  $("#search").addEventListener("input",e=>{ searchTxt=norm(e.target.value); renderCatalog(); });
   // filtros de función
   $("#fnFilters").addEventListener("click",e=>{
     const chip=e.target.closest(".chip"); if(!chip) return;
@@ -690,12 +691,16 @@ function bind(){
     const tb=e.target.closest("[data-btab]"); if(tb && boardAnaB){ boardTab=tb.dataset.btab; showModal(boardAnaHTML(boardAnaB)); return; }
     if(e.target.closest("#goLegumes")){ closeInfo(); showLegumes(); return; }
     const ob=e.target.closest(".optbtn"); if(ob && optBoard && !ob.disabled){ fillMulti(optBoard, optSel, ob.dataset.fillmode); return; }
-    const rm=e.target.closest(".selchip"); if(rm && optBoard){ optSel=optSel.filter(x=>x!==rm.dataset.rm); refreshOpt(); return; }
+    const sw=e.target.closest(".sc-w"); if(sw && optBoard){ const id=sw.dataset.id; optW[id]=Math.min(9,Math.max(1,(optW[id]||1)+(+sw.dataset.wd))); refreshOpt(); return; }
+    const rm=e.target.closest(".sc-x"); if(rm && optBoard){ optSel=optSel.filter(x=>x!==rm.dataset.rm); delete optW[rm.dataset.rm]; refreshOpt(); return; }
     if(e.target.closest("#optSuggest") && optBoard){ suggestCompanion(); return; }
     const g=e.target.closest("[data-goto]"); if(g) openInfo(g.dataset.goto);
   });
   $("#modalBody").addEventListener("change",e=>{
-    if(e.target.id==="optAdd" && optBoard && e.target.value){ if(!optSel.includes(e.target.value)) optSel.push(e.target.value); refreshOpt(); }
+    if(e.target.id==="optAdd" && optBoard && e.target.value){ if(!optSel.includes(e.target.value)){ optSel.push(e.target.value); optW[e.target.value]=1; } refreshOpt(); }
+  });
+  $("#modalBody").addEventListener("keydown",e=>{
+    if(e.target.id==="optCmd" && e.key==="Enter"){ e.preventDefault(); parseOptCommand(e.target.value); const c=$("#optCmd"); if(c){ c.focus(); } }
   });
   // arrastrar del catálogo (mouse) / tocar para colocar (touch)
   $("#catalog").addEventListener("pointerdown",e=>{
@@ -731,7 +736,7 @@ function bind(){
     pushUndo();
     state.boards.push({uid:"b"+(state.nextId++), x:MARGIN+0.3, y:MARGIN+0.3, L:+L, W:+W});
     save(); renderStage();
-    toast("🔬 Tocá “Analizar” en el bancal: elegís qué plantar y te calculo la mejor forma");
+    toast("📐 Tocá “Diseñar” en el bancal: elegís qué plantar y te calculo la mejor forma");
   });
   // terreno
   $("#setTerreno").addEventListener("click",()=>{
@@ -1118,7 +1123,7 @@ function boardAnaHTML(b){
       <button class="btab ${boardTab==='rotacion'?'on':''}" data-btab="rotacion">🔄 Rotación INTA</button>
     </div>`;
   return `
-    <div class="m-head"><div><h3>🔬 Bancal ${b.L.toFixed(1)} × ${b.W.toFixed(1)} m</h3>
+    <div class="m-head"><div><h3>📐 Diseñar bancal · ${b.L.toFixed(1)} × ${b.W.toFixed(1)} m</h3>
       <div class="m-sci">${inside.length} planta${inside.length!==1?"s":""} adentro</div></div></div>
     <div style="padding:10px 18px 0">${tabs}</div>
     <div id="boardTab">${renderBoardTab(b, boardTab)}</div>`;
@@ -1193,17 +1198,22 @@ function packPositions(L,W,dPlant,dRow,mode){
   }
   return pos;
 }
-/* ---- selección múltiple de especies para el bancal ---- */
-let optSel = [];
+/* ---- selección múltiple de especies (con proporción ×N) ---- */
+let optSel = [], optW = {};
 function optimizerSection(b, defIds){
   optSel = (defIds && defIds.length) ? [...new Set(defIds)] : ["lechuga"];
+  optW = {}; optSel.forEach(id=>optW[id]=1);
   return `<h5 class="asec">📐 ¿Qué querés plantar acá?</h5>
     <div id="optSelWrap">${renderOptSel()}</div>
     <div id="optResult">${renderOptResult(b)}</div>`;
 }
 function renderOptSel(){
   const chips = optSel.length
-    ? optSel.map(id=>`<button class="selchip" data-rm="${id}">${byId[id].nombre} ✕</button>`).join("")
+    ? optSel.map(id=>`<span class="selchip"><span class="sc-nm">${byId[id].nombre}</span>
+        <button class="sc-w" data-wd="-1" data-id="${id}" title="menos">−</button>
+        <b class="sc-n">×${optW[id]||1}</b>
+        <button class="sc-w" data-wd="1" data-id="${id}" title="más">＋</button>
+        <button class="sc-x" data-rm="${id}" title="quitar">✕</button></span>`).join("")
     : `<span class="cal-empty">Elegí al menos una planta…</span>`;
   const opts = PLANTS.slice().sort((a,b)=>a.nombre.localeCompare(b.nombre))
     .filter(p=>!optSel.includes(p.id))
@@ -1212,7 +1222,8 @@ function renderOptSel(){
     <div class="selctrls">
       <select id="optAdd"><option value="">＋ agregar planta…</option>${opts}</select>
       <button class="btn ghost" id="optSuggest" title="Sumar una buena compañera (INTA)">🤝 Sugerir compañera</button>
-    </div>`;
+    </div>
+    <input id="optCmd" class="optcmd" placeholder="💬 Pedí: “el doble de lechuga”, “más tomate”, “sacá ajo”…"/>`;
 }
 function renderOptResult(b){
   if(!optSel.length) return `<div class="cal-empty" style="padding:10px 0">Agregá plantas arriba para calcular cuántas entran.</div>`;
@@ -1234,25 +1245,54 @@ function renderOptResult(b){
       ${card("🔼 Tresbolillo (denso)", tres, "tres", "no INTA", "no")}
     </div>`;
 }
-/* disposición de varias especies: hileras round-robin, cada una a su distancia INTA */
+/* secuencia ponderada (round-robin suave) para repartir hileras según peso */
+function weightedSeq(weights, len){
+  const total=weights.reduce((a,b)=>a+b,0)||1, cred=weights.map(()=>0), out=[];
+  for(let i=0;i<len;i++){ for(let j=0;j<weights.length;j++) cred[j]+=weights[j];
+    let mi=0; for(let j=1;j<weights.length;j++) if(cred[j]>cred[mi]) mi=j;
+    cred[mi]-=total; out.push(mi); }
+  return out;
+}
+/* disposición de varias especies: hileras según proporción, cada una a su distancia INTA */
 function multiLayout(b, ids, mode){
-  const sp = ids.map(id=>{ const d=byId[id].dist/100; const el=DET(id).entreLineasCm?Math.max(DET(id).entreLineasCm/100,d):d; return {id,d,el}; });
+  const sp = ids.map(id=>{ const d=byId[id].dist/100; const el=DET(id).entreLineasCm?Math.max(DET(id).entreLineasCm/100,d):d; return {id,d,el,w:(optW[id]||1)}; });
+  const seq = weightedSeq(sp.map(s=>s.w), 400);
   const positions=[], cnt={}; ids.forEach(id=>cnt[id]=0);
-  const n=sp.length; let y=0, i=0, rows=0, fails=0, guard=0;
-  while(fails<n && guard<600){
+  const n=sp.length; let y=0, k=0, rows=0, guard=0; const failed=new Set();
+  while(failed.size<n && guard<900){
     guard++;
-    const s=sp[i%n]; i++;
+    const s=sp[seq[k%seq.length]]; k++;
     if(y + s.el <= b.W + 1e-6){
       const cy=y+s.el/2, off=(mode==="tres" && rows%2===1)?s.d/2:0;
       const ncols=Math.floor((b.L - s.d - off)/s.d)+1;
       const startX=(b.L-((ncols-1)*s.d)-off)/2+off;
       for(let c=0;c<ncols;c++){ const x=startX+c*s.d; if(x>=s.d/2-1e-6 && x<=b.L-s.d/2+1e-6){ positions.push({id:s.id,x,y:cy}); cnt[s.id]++; } }
-      rows++; y+=s.el; fails=0;
-    } else fails++;
+      rows++; y+=s.el; failed.clear();
+    } else failed.add(s.id);
   }
   const offY=Math.max(0,(b.W-y)/2);                 // centrar verticalmente el bloque
   positions.forEach(p=>p.y+=offY);
   return { total:positions.length, perSpecies: ids.map(id=>({id,n:cnt[id]})).filter(x=>x.n>0), positions };
+}
+/* mini-chat: interpreta pedidos simples sobre el diseño */
+function parseOptCommand(txt){
+  const t=norm(txt); if(!t){ return; }
+  let found=null, flen=0;
+  PLANTS.forEach(p=>{ const bn=norm(plantBaseName(p)); if(bn && t.includes(bn) && bn.length>flen){ found=p; flen=bn.length; } });
+  if(!found){ toast("No reconocí qué planta 🤔"); return; }
+  const id=found.id;
+  if(/\b(saca|sacar|saco|quita|quitar|quito|elimina|borra|sin)\b/.test(t)){
+    optSel=optSel.filter(x=>x!==id); delete optW[id]; refreshOpt(); toast(`➖ Saqué ${found.nombre}`); return;
+  }
+  if(!optSel.includes(id)){ optSel.push(id); optW[id]=1; }
+  const numX=t.match(/x\s*(\d+)/) || t.match(/(\d+)\s*(?:veces|x)/);
+  if(t.includes("doble")) optW[id]=2;
+  else if(t.includes("triple")) optW[id]=3;
+  else if(t.includes("cuadruple")) optW[id]=4;
+  else if(/\bmitad\b/.test(t) || /\bmenos\b/.test(t)) optW[id]=Math.max(1,(optW[id]||1)-1);
+  else if(/\bmas\b/.test(t)) optW[id]=Math.min(9,(optW[id]||1)+1);
+  if(numX) optW[id]=Math.min(9,Math.max(1,+numX[1]));
+  refreshOpt(); toast(`✓ ${found.nombre} ×${optW[id]||1}`);
 }
 function fillMulti(b, ids, mode){
   const plan=multiLayout(b, ids, mode);
@@ -1403,8 +1443,8 @@ const TUTORIAL = [
    text:"El botón <b>info</b> abre la ficha: <b>buenas y malas compañeras</b> (clickeables), riego, luz, tolerancia a heladas, días a cosecha, altura, temporada y forma de siembra INTA."},
   {art:"🟫", title:"Bancales con borde de madera",
    text:"Elegí <b>largo y ancho</b> (= el interior cultivable) y tocá <b>+ Bancal</b>. La madera va por fuera y el interior tiene <b>mulch de paja</b>. Movelo, <b>redimensionalo</b> desde la esquina y <b>rotalo 90°</b> con ⟳ (las plantas rotan con él)."},
-  {art:"🔬", title:"Analizá y optimizá (¡lo mejor!)",
-   text:"Tocá <b>🔬 Analizar</b> en un bancal: te muestra la <b>rotación INTA</b> (en qué fase estás y qué viene) y el <b>optimizador</b> — elegís una planta y te dice <b>cuántas entran</b> (en línea, tresbolillo o <b>asociación de cultivos</b>) y te las <b>ordena solas</b>. Acá está el mayor valor."},
+  {art:"📐", title:"Diseñá el bancal (¡lo mejor!)",
+   text:"Tocá <b>📐 Diseñar</b> en un bancal: elegís <b>una o varias plantas</b> (podés pedir “el doble de lechuga”) y te dice <b>cuántas entran y la mejor forma</b> de acomodarlas — tocás <b>En línea</b> o <b>Tresbolillo</b> y las planta solas. Además te muestra la <b>rotación INTA</b>. Acá está el mayor valor."},
   {art:"🗺️", title:"Terreno, calendario y proyectos",
    text:"El recuadro punteado es tu <b>terreno</b> (cambiá medidas y <b>Aplicar</b>), con margen alrededor para maniobrar. <b>📅 Calendario</b>: qué sembrar/cosechar cada mes. <b>📁 Proyecto</b>: guardá, cargá e importá varios diseños."},
   {art:"⌨️", title:"Selección y atajos",
