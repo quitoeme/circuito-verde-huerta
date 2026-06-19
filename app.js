@@ -381,6 +381,7 @@ function boardEl(b){
       <span class="dim h">${b.L.toFixed(1)} m</span>
       <span class="dim w">${b.W.toFixed(1)} m</span>
       <button class="rot" title="Rotar 90°">⟳</button>
+      <button class="lock ${b.locked?"on":""}" title="${b.locked?"Bloqueado: las plantas se mueven con el bancal":"Desbloqueado: el bancal se mueve solo"}">${b.locked?"🔒":"🔓"}</button>
       <button class="del" title="Quitar bancal">✕</button>
       <button class="ana" title="Diseñar este bancal: elegí qué plantar y te calculo la mejor forma (+ rotación INTA)">📐 Diseñar</button>
       <span class="handle" title="Redimensionar"></span>
@@ -388,6 +389,10 @@ function boardEl(b){
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".del").addEventListener("click",e=>{
     e.stopPropagation(); pushUndo(); state.boards = state.boards.filter(x=>x.uid!==b.uid); save(); renderStage();});
+  el.querySelector(".lock").addEventListener("pointerdown",e=>{e.stopPropagation();});
+  el.querySelector(".lock").addEventListener("click",e=>{
+    e.stopPropagation(); b.locked=!b.locked; save(); renderStage();
+    toast(b.locked?"🔒 Bancal bloqueado: las plantas se mueven con él":"🔓 Bancal desbloqueado");});
   el.querySelector(".rot").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".rot").addEventListener("click",e=>{ e.stopPropagation(); rotateBoard(b); });
   el.querySelector(".ana").addEventListener("pointerdown",e=>{e.stopPropagation();});
@@ -427,6 +432,14 @@ function startGroupDrag(e, el){
     const node = stage.querySelector(`.node[data-uid="${uid}"]`);
     return {type:it.type, ref:it.ref, el:node, sx:it.ref.x, sy:it.ref.y};
   }).filter(Boolean);
+  // bancales BLOQUEADOS: arrastran las plantas de adentro aunque no estén seleccionadas
+  const already=new Set(items.map(it=>it.ref.uid));
+  items.filter(it=>it.type==="board" && it.ref.locked).forEach(it=>{
+    plantsInBoard(it.ref).forEach(pl=>{ if(!already.has(pl.uid)){
+      already.add(pl.uid);
+      items.push({type:"plant", ref:pl, el:stage.querySelector(`.node[data-uid="${pl.uid}"]`), sx:pl.x, sy:pl.y});
+    }});
+  });
   const startMX=(e.clientX-rect.left)/s, startMY=(e.clientY-rect.top)/s;
   let moved=false; const pre=snapshot();
   try{ el.setPointerCapture(e.pointerId); }catch(_){}
@@ -807,8 +820,36 @@ function bind(){
             (e.key==="ArrowUp"?-step:e.key==="ArrowDown"?step:0));
     }
   });
-  // click en vacío deselecciona
-  stage.addEventListener("pointerdown",e=>{ if(e.target===stage||e.target===gridC){ clearSel(); }});
+  // click izquierdo en vacío deselecciona
+  stage.addEventListener("pointerdown",e=>{ if(e.button===0 && (e.target===stage||e.target===gridC)){ clearSel(); }});
+  // click DERECHO + arrastrar = selección por recuadro (sin teclas)
+  stage.addEventListener("contextmenu",e=>e.preventDefault());
+  stage.addEventListener("pointerdown",e=>{
+    if(e.button!==2) return;
+    e.preventDefault();
+    const rect=stage.getBoundingClientRect(), s=state.scale;
+    const sx=e.clientX-rect.left, sy=e.clientY-rect.top;
+    const box=document.createElement("div"); box.className="marquee"; stage.appendChild(box);
+    let moved=false;
+    const move=ev=>{
+      moved=true;
+      const cx=ev.clientX-rect.left, cy=ev.clientY-rect.top;
+      box.style.left=Math.min(sx,cx)+"px"; box.style.top=Math.min(sy,cy)+"px";
+      box.style.width=Math.abs(cx-sx)+"px"; box.style.height=Math.abs(cy-sy)+"px";
+    };
+    const up=ev=>{
+      document.removeEventListener("pointermove",move); document.removeEventListener("pointerup",up);
+      box.remove();
+      const cx=ev.clientX-rect.left, cy=ev.clientY-rect.top;
+      const x0=Math.min(sx,cx)/s, y0=Math.min(sy,cy)/s, x1=Math.max(sx,cx)/s, y1=Math.max(sy,cy)/s;
+      if(moved){
+        const sel=state.plants.filter(p=>p.x>=x0&&p.x<=x1&&p.y>=y0&&p.y<=y1).map(p=>p.uid);
+        setSelection(sel);
+        if(sel.length) toast(`✓ ${sel.length} planta${sel.length>1?"s":""} seleccionada${sel.length>1?"s":""} — arrastrá para moverlas`);
+      }
+    };
+    document.addEventListener("pointermove",move); document.addEventListener("pointerup",up);
+  });
 }
 
 function exportDesign(){
