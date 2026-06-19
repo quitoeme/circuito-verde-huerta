@@ -889,16 +889,32 @@ const SNAP = 0.25; // m
 const snapVal = v => snapOn ? Math.round(v/SNAP)*SNAP : v;
 
 /* ---- duplicar selección ---- */
+/* busca el lugar LIBRE más cercano a (cx,cy) en una grilla, sin solapar lo ocupado */
+function findFreeNear(cx, cy, d, occ){
+  const step=Math.max(d,0.12), myR=d/2, cands=[];
+  for(let y=step/2;y<=stageH();y+=step) for(let x=step/2;x<=stageW();x+=step)
+    cands.push({x,y,dd:(x-cx)*(x-cx)+(y-cy)*(y-cy)});
+  cands.sort((a,b)=>a.dd-b.dd);
+  for(const c of cands){ let ok=true; for(const o of occ){ const mr=o.r+myR; if((o.x-c.x)*(o.x-c.x)+(o.y-c.y)*(o.y-c.y) < mr*mr){ ok=false; break; } } if(ok) return c; }
+  return null;
+}
 function duplicateSelection(){
   if(!selUids.size) return;
   pushUndo();
+  const occ=state.plants.map(pl=>({x:pl.x,y:pl.y,r:(byId[pl.id]?byId[pl.id].dist:30)/200}));
   const news=[];
   [...selUids].forEach(uid=>{
     const it=findItem(uid); if(!it) return;
-    const c=Object.assign({}, it.ref);
-    c.uid=(it.type==="plant"?"p":"b")+(state.nextId++); c.x=clamp(it.ref.x+0.3,0,stageW()); c.y=clamp(it.ref.y+0.3,0,stageH());
-    if(it.type==="plant") state.plants.push(c); else state.boards.push(c);
-    news.push(c.uid);
+    if(it.type==="board"){
+      const c=Object.assign({}, it.ref);
+      c.uid="b"+(state.nextId++); c.x=clamp(it.ref.x+0.4,0,stageW()-it.ref.L); c.y=clamp(it.ref.y+0.4,0,stageH()-it.ref.W);
+      state.boards.push(c); news.push(c.uid);
+    } else {
+      const d=Math.max((byId[it.ref.id]?byId[it.ref.id].dist:25)/100, 0.12);
+      const spot=findFreeNear(it.ref.x, it.ref.y, d, occ) || {x:clamp(it.ref.x+0.3,0,stageW()), y:clamp(it.ref.y+0.3,0,stageH())};
+      const c={uid:"p"+(state.nextId++), id:it.ref.id, x:+spot.x.toFixed(3), y:+spot.y.toFixed(3)};
+      state.plants.push(c); occ.push({x:c.x,y:c.y,r:d/2}); news.push(c.uid);
+    }
   });
   setSelection(news); save(); renderStage();
   toast(`⧉ ${news.length} duplicada${news.length>1?"s":""}`);
