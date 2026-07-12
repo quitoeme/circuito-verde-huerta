@@ -1,5 +1,5 @@
 /* ============================================================
-   Circuito Verde · lógica de la app
+   Planificador de Huerta · lógica de la app
    ============================================================ */
 "use strict";
 
@@ -359,14 +359,15 @@ function boardEl(b){
   el.style.left = (b.x*s - ft)+"px"; el.style.top = (b.y*s - ft)+"px";
   el.innerHTML = `<div class="board-rect" style="width:${wpx}px;height:${hpx}px">
       <div class="board-frame" style="--frame:${ft}px" aria-hidden="true"><div class="board-soil"></div></div>
-      <span class="dim h">${b.L.toFixed(1)} m</span>
-      <span class="dim w">${b.W.toFixed(1)} m</span>
       <div class="board-actions">
         <button class="rot" title="Rotar el bancal 90 grados" aria-label="Rotar el bancal 90 grados"><span aria-hidden="true">↻</span> Rotar</button>
         <button class="lock ${b.locked?"on":""}" title="${b.locked?"Hacer que el bancal se mueva solo":"Mover las plantas junto con el bancal"}">${b.locked?"Mover solo":"Mover con plantas"}</button>
         <button class="del" title="Eliminar este bancal" aria-label="Eliminar este bancal">Eliminar</button>
       </div>
-      <button class="ana" title="Elegir cultivos y calcular cómo distribuirlos">Organizar cultivos</button>
+      <div class="board-footer">
+        <div class="board-size" aria-label="Medidas del bancal"><span class="dim h">${b.L.toFixed(1)}</span><span aria-hidden="true">×</span><span class="dim w">${b.W.toFixed(1)}</span><small>m</small></div>
+        <button class="ana" title="Elegir cultivos y calcular cómo distribuirlos">Organizar bancal</button>
+      </div>
       <button class="handle" title="Cambiar el tamaño del bancal" aria-label="Cambiar el tamaño del bancal"></button>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
@@ -495,8 +496,8 @@ function makeBoardResizable(handle, rectEl, b){
       b.W = Math.max(0.2, +(W0 + (ev.clientY-startY)/s).toFixed(2));
       const ft=boardFrameThick(), Wpx=b.L*s+2*ft, Hpx=b.W*s+2*ft;
       rectEl.style.width=Wpx+"px"; rectEl.style.height=Hpx+"px";
-      rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
-      rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
+      rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1);
+      rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1);
     };
     let didResize=false; const move0=move;
     const up=()=>{ try{ handle.releasePointerCapture(e.pointerId); }catch(_){}
@@ -729,7 +730,7 @@ function bind(){
     pushUndo();
     state.boards.push({uid:"b"+(state.nextId++), x:MARGIN+0.3, y:MARGIN+0.3, L:+L, W:+W});
     save(); renderStage();
-    toast("📐 Tocá “Diseñar” en el bancal: elegís qué plantar y te calculo la mejor forma");
+    toast("Usá “Organizar bancal” para elegir cultivos y calcular su distribución");
   });
   const emptyAdd=$("#emptyAddBoard");
   if(emptyAdd) emptyAdd.addEventListener("click",()=>$("#addBoard").click());
@@ -742,10 +743,16 @@ function bind(){
   // deshacer y borrar selección
   $("#undoBtn").addEventListener("click",undo);
   $("#delSel").addEventListener("click",deleteSelection);
-  // catálogo colapsable
-  $("#catToggle").addEventListener("click",toggleCatalog);
-  const cb=$("#catBackdrop"); if(cb) cb.addEventListener("click",closeCatalog);
-  const cc=$("#catClose"); if(cc) cc.addEventListener("click",closeCatalog);
+  // paneles independientes: cultivos y herramientas
+  $("#catToggle").addEventListener("click",closeCatalog);
+  $("#catReveal").addEventListener("click",openCatalog);
+  $("#toolsToggle").addEventListener("click",toggleTools);
+  $("#mobileCatalogBtn").addEventListener("click",toggleCatalog);
+  $("#mobileToolsBtn").addEventListener("click",toggleMobileTools);
+  $("#mobileToolsClose").addEventListener("click",closeMobileTools);
+  const cb=$("#catBackdrop"); if(cb) cb.addEventListener("click",()=>{
+    document.body.classList.contains("mobile-tools-open") ? closeMobileTools() : closeCatalog();
+  });
   // aviso de orientación
   const rd=$("#rotDismiss"); if(rd) rd.addEventListener("click",()=>$("#rotate-hint").classList.add("dismissed"));
   // vaciar
@@ -785,7 +792,12 @@ function bind(){
   $("#tutorial").addEventListener("click",e=>{ if(e.target.id==="tutorial") closeTutorial(); });
   // ---------- atajos de teclado ----------
   document.addEventListener("keydown",e=>{
-    if(e.key==="Escape"){ closeInfo(); if(!$("#tutorial").hidden) closeTutorial(); return; }
+    if(e.key==="Escape"){
+      closeInfo(); closeMobileTools();
+      if(window.innerWidth<880) closeCatalog();
+      if(!$("#tutorial").hidden) closeTutorial();
+      return;
+    }
     const t=document.activeElement, typing = t && /INPUT|TEXTAREA|SELECT/.test(t.tagName);
     if(typing) return;
     if(!$("#modal").hidden) return;                 // no interferir con un modal abierto
@@ -841,7 +853,7 @@ function bind(){
 function exportDesign(){
   const counts={}; state.plants.forEach(i=>counts[i.id]=(counts[i.id]||0)+1);
   const resumen = {
-    proyecto:"Circuito Verde — diseño de huerta/invernadero",
+    proyecto:"Planificador de Huerta — diseño de huerta/invernadero",
     terreno_m: state.terreno, escala_px_por_m: state.scale,
     total_plantas: state.plants.length,
     especies: Object.keys(counts).length,
@@ -855,7 +867,7 @@ function exportDesign(){
   };
   const blob = new Blob([JSON.stringify(resumen,null,2)],{type:"application/json"});
   const a=document.createElement("a"); a.href=URL.createObjectURL(blob);
-  a.download="circuito-verde-diseno.json"; a.click(); URL.revokeObjectURL(a.href);
+  a.download="planificador-huerta-diseno.json"; a.click(); URL.revokeObjectURL(a.href);
 }
 
 /* ============================================================
@@ -1052,7 +1064,7 @@ function exportPNG(){
 function downloadPNG(){
   try{
     const url=exportPNG().toDataURL("image/png");
-    const a=document.createElement("a"); a.href=url; a.download="circuito-verde-plano.png"; a.click();
+    const a=document.createElement("a"); a.href=url; a.download="planificador-huerta-plano.png"; a.click();
   }catch(e){ alert("No pude generar el PNG (puede pasar al abrir el archivo localmente). Probá la versión online."); }
 }
 function printDesign(){
@@ -1060,12 +1072,12 @@ function printDesign(){
   const w=window.open("","_blank"); if(!w){ alert("Permití las ventanas emergentes para imprimir."); return; }
   const counts={}; state.plants.forEach(i=>counts[i.id]=(counts[i.id]||0)+1);
   const rows=Object.keys(counts).sort().map(id=>`<tr><td>${byId[id]?byId[id].nombre:id}</td><td>${counts[id]}</td><td>${byId[id]?byId[id].dist:""} cm</td><td>${DET(id).metodo||""}</td></tr>`).join("");
-  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Circuito Verde — diseño</title>
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Planificador de Huerta — diseño</title>
     <style>body{font-family:Segoe UI,system-ui,sans-serif;padding:22px;color:#34433a}h1{color:#2c5a39;margin:0 0 4px}
     img{max-width:100%;border:1px solid #d9d2bf;border-radius:10px;margin-top:10px}
     table{border-collapse:collapse;margin-top:16px;width:100%}td,th{border:1px solid #ddd;padding:5px 10px;font-size:13px;text-align:left}
     th{background:#e8efe3;color:#2c5a39}</style></head>
-    <body><h1>🌱 Circuito Verde</h1>
+    <body><h1>🌱 Planificador de Huerta</h1>
     <p>Terreno ${state.terreno.w}×${state.terreno.h} m · ${state.plants.length} plantas · ${Object.keys(counts).length} especies · ${state.boards.length} bancales</p>
     ${url?`<img src="${url}"/>`:"<p>(no se pudo generar la imagen del plano)</p>"}
     <h3>Plantas</h3><table><tr><th>Planta</th><th>Cant.</th><th>Distancia</th><th>Método</th></tr>${rows}</table></body></html>`);
@@ -1476,14 +1488,22 @@ function renderCalendar(){
    ============================================================ */
 const TUT_KEY = "circuitoVerde.tutDone";
 const TUTORIAL = [
-  {art:"01", title:"Creá el espacio de cultivo",
-   text:"Indicá las medidas del <b>terreno</b> y del <b>bancal</b>. Al crearlo vas a poder moverlo, rotarlo y cambiar su tamaño directamente sobre el plano."},
-  {art:"02", title:"Sumá los cultivos",
-   text:"Buscá una planta y tocá <b>+</b> para agregarla, o arrastrala al lugar que prefieras. El círculo punteado muestra la <b>distancia real</b> que necesita."},
-  {art:"03", title:"Dejá que la app los acomode",
-   text:"En cada bancal, tocá <b>Diseñar</b>. Elegí qué querés plantar y Circuito Verde calcula cuántas unidades entran y cómo distribuirlas."},
-  {art:"04", title:"Revisá y guardá tu plan",
-   text:"Usá <b>Revisar plan</b> para detectar incompatibilidades y preparar la lista de cultivos. El trabajo se guarda en este dispositivo; la sincronización con Google es opcional."},
+  {art:"🌱", title:"Tu huerta, antes de plantar",
+   text:"Este planificador te ayuda a diseñar una <b>huerta o invernadero a escala real</b>, con información adaptada al clima patagónico. Vas a poder probar distribuciones, calcular cantidades y detectar asociaciones favorables antes de trabajar el suelo."},
+  {art:"📏", title:"Primero definí el espacio",
+   text:"En <b>Herramientas</b> indicá el largo y ancho total del terreno. Después creá uno o varios <b>bancales</b> con sus medidas interiores. Podés moverlos, rotarlos y cambiar su tamaño desde la esquina inferior derecha."},
+  {art:"🥬", title:"Encontrá los cultivos adecuados",
+   text:"El panel <b>Cultivos</b> permite buscar por nombre, agrupar por categoría o familia y filtrar por beneficio o temporada. El filtro <b>Invernadero</b> muestra las especies que conviene proteger bajo cubierta en Bariloche."},
+  {art:"↔", title:"Distancias reales entre plantas",
+   text:"Agregá una planta con el botón <b>+</b> o arrastrándola al plano. El círculo punteado representa la <b>distancia real de plantación</b>; si dos plantas quedan demasiado cerca, la app las marca para que puedas corregir la distribución."},
+  {art:"🤝", title:"Buenas y malas compañeras",
+   text:"En <b>Ver ficha</b> encontrás riego, luz, época y método de siembra, tolerancia a heladas y asociaciones. Las buenas compañeras ayudan a aprovechar espacio o controlar plagas; las incompatibles se señalan también en el plano."},
+  {art:"▦", title:"Organizá cada bancal automáticamente",
+   text:"El botón <b>Organizar bancal</b> abre el asistente de distribución. Elegí una o varias especies, indicá sus proporciones y compará si conviene plantarlas en línea o tresbolillo. La pestaña de rotación sugiere qué familia cultivar después."},
+  {art:"✋", title:"Mové y editá con libertad",
+   text:"Arrastrá plantas y bancales para acomodarlos. En computadora, <b>Shift + clic</b> selecciona varios y <b>Ctrl + Z</b> deshace. En el teléfono, usá la barra inferior para alternar entre <b>Cultivos</b>, <b>Herramientas</b> y el plano sin perder espacio."},
+  {art:"✓", title:"Revisá, guardá y compartí",
+   text:"<b>Revisar plan</b> resume cantidades, superficie y conflictos. El diseño se guarda automáticamente en este dispositivo; si elegís <b>Sincronizar</b>, también queda disponible en tu cuenta. Podés descargar una imagen, imprimirlo o exportar el archivo del proyecto."},
 ];
 let tutStep = 0;
 function renderTut(){
@@ -1564,9 +1584,46 @@ function doLogout(){
   toast("La sincronización se cerró. El diseño sigue guardado en este dispositivo.");
 }
 
-/* ---------- catálogo (drawer en mobile) ---------- */
-function closeCatalog(){ document.body.classList.add("cat-collapsed"); }
-function toggleCatalog(){ document.body.classList.toggle("cat-collapsed"); }
+/* ---------- paneles de navegación ---------- */
+const TOOLS_UI_KEY = "circuitoVerde.toolsCollapsed";
+const mobileUI = ()=> window.innerWidth < 880;
+let lastMobileState = mobileUI();
+function updatePanelUI(){
+  const catClosed=document.body.classList.contains("cat-collapsed");
+  const toolsClosed=document.body.classList.contains("tools-collapsed");
+  const mobileToolsOpen=document.body.classList.contains("mobile-tools-open");
+  const toolsLabel=$("#toolsToggleLabel"), toolsBtn=$("#toolsToggle");
+  if(toolsLabel) toolsLabel.textContent=toolsClosed?"Mostrar herramientas":"Ocultar herramientas";
+  if(toolsBtn){
+    toolsBtn.setAttribute("aria-expanded",String(!toolsClosed));
+    toolsBtn.title=toolsClosed?"Mostrar las herramientas del plano":"Ocultar las herramientas del plano";
+    toolsBtn.setAttribute("aria-label",toolsBtn.title);
+  }
+  const mobileCat=$("#mobileCatalogBtn"), mobileTools=$("#mobileToolsBtn");
+  if(mobileCat) mobileCat.setAttribute("aria-pressed",String(!catClosed));
+  if(mobileTools) mobileTools.setAttribute("aria-pressed",String(mobileToolsOpen));
+}
+function openCatalog(){
+  document.body.classList.remove("cat-collapsed","mobile-tools-open");
+  updatePanelUI();
+}
+function closeCatalog(){ document.body.classList.add("cat-collapsed"); updatePanelUI(); }
+function toggleCatalog(){
+  document.body.classList.contains("cat-collapsed") ? openCatalog() : closeCatalog();
+}
+function toggleTools(){
+  if(mobileUI()){ toggleMobileTools(); return; }
+  document.body.classList.toggle("tools-collapsed");
+  try{ localStorage.setItem(TOOLS_UI_KEY,document.body.classList.contains("tools-collapsed")?"1":"0"); }catch(e){}
+  updatePanelUI();
+}
+function toggleMobileTools(){
+  const opening=!document.body.classList.contains("mobile-tools-open");
+  document.body.classList.toggle("mobile-tools-open",opening);
+  if(opening) document.body.classList.add("cat-collapsed");
+  updatePanelUI();
+}
+function closeMobileTools(){ document.body.classList.remove("mobile-tools-open"); updatePanelUI(); }
 
 /* ============================================================
    SYNC A LA NUBE (Vercel KV vía /api/data) — por usuario
@@ -1618,9 +1675,30 @@ window.addEventListener("offline", ()=>setSyncUI("offline"));
 function init(){
   load();
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
-  if(window.innerWidth < 880){ document.body.classList.add("cat-collapsed"); $("#stats").classList.add("collapsed"); }
+  lastMobileState=mobileUI();
+  if(mobileUI()){
+    document.body.classList.add("cat-collapsed","tools-collapsed");
+    $("#stats").classList.add("collapsed");
+  }else{
+    try{ if(localStorage.getItem(TOOLS_UI_KEY)==="1") document.body.classList.add("tools-collapsed"); }catch(e){}
+  }
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage(); renderProjSelect();
-  renderUserChip();
+  renderUserChip(); updatePanelUI();
   if(sessionValid()) syncNow();
 }
 document.addEventListener("DOMContentLoaded",init);
+window.addEventListener("resize",()=>{
+  const isMobile=mobileUI();
+  if(isMobile!==lastMobileState){
+    document.body.classList.remove("mobile-tools-open");
+    if(isMobile){
+      document.body.classList.add("cat-collapsed","tools-collapsed");
+      $("#stats").classList.add("collapsed");
+    }else{
+      document.body.classList.remove("cat-collapsed");
+      try{ document.body.classList.toggle("tools-collapsed",localStorage.getItem(TOOLS_UI_KEY)==="1"); }catch(e){}
+    }
+    lastMobileState=isMobile;
+  }
+  updatePanelUI();
+});

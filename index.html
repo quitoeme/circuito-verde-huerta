@@ -4,8 +4,8 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="theme-color" content="#174c3c" />
-<meta name="description" content="Planificá tu invernadero patagónico con cultivos, bancales y distancias reales." />
-<title>Circuito Verde · Planificador de invernadero</title>
+<meta name="description" content="Diseñá tu huerta e invernadero con cultivos, bancales y distancias reales." />
+<title>Planificador de Huerta · Patagonia</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -444,19 +444,19 @@
   }
   @keyframes sheetIn{from{transform:translateY(100%)}to{transform:none}}
 </style>
-<link rel="stylesheet" href="styles.css?v=2.1.2" />
+<link rel="stylesheet" href="styles.css?v=3.0.2" />
 </head>
 <body>
 <header class="app-header">
   <div class="brand-mark" aria-hidden="true"><span></span></div>
   <div class="brand-copy">
-    <h1>Circuito Verde</h1>
-    <p>Planificador de invernadero</p>
+    <h1>Planificador de Huerta</h1>
+    <p>Huerta e invernadero patagónico</p>
   </div>
   <span class="location-pill">Patagonia · INTA Bariloche</span>
   <div class="spacer"></div>
   <span id="cloud" class="cloud" hidden></span>
-  <button id="btnTutorial" class="header-action" title="Cómo usar la app">Ayuda</button>
+  <button id="btnTutorial" class="header-action" title="Cómo usar la app" aria-label="Abrir tutorial de uso">Ayuda</button>
   <button id="btn-login" class="header-action sync-action" title="Sincronizar entre dispositivos">Sincronizar</button>
   <div id="user-menu" hidden>
     <img id="user-avatar" alt="" />
@@ -518,7 +518,7 @@
           <h2>Elegí tus cultivos</h2>
           <p>Sumalos al plano con el botón + o arrastrándolos.</p>
         </div>
-        <button id="catClose" aria-label="Cerrar catálogo">✕</button>
+        <button id="catToggle" class="panel-collapse" title="Ocultar el panel de cultivos" aria-label="Ocultar el panel de cultivos"><span aria-hidden="true">‹</span> Ocultar</button>
       </div>
       <div class="tabs">
         <button data-view="todas" class="active">Todas</button>
@@ -540,12 +540,13 @@
       <span>⚡ fija nitrógeno</span><span>🏠 invernadero</span>
     </div>
   </aside>
+  <button id="catReveal" class="catalog-reveal" title="Mostrar el panel de cultivos" aria-label="Mostrar el panel de cultivos"><span aria-hidden="true">›</span><span>Cultivos</span></button>
 
   <!-- PLANIFICADOR -->
   <section class="planner">
     <div class="workspace-head">
       <div class="workspace-title">
-        <button class="catalog-toggle" id="catToggle" title="Mostrar u ocultar cultivos" aria-label="Mostrar u ocultar cultivos">☰</button>
+        <button class="tools-toggle" id="toolsToggle" title="Ocultar las herramientas del plano" aria-label="Ocultar las herramientas del plano"><span class="tools-toggle-icon" aria-hidden="true">⌃</span><span id="toolsToggleLabel">Ocultar herramientas</span></button>
         <div>
           <span class="step-label">Paso 2</span>
           <h2>Diseñá tu espacio</h2>
@@ -562,6 +563,7 @@
       </div>
     </div>
     <div class="toolbar">
+      <div class="toolbar-mobile-head"><strong>Herramientas del plano</strong><button id="mobileToolsClose">Listo</button></div>
       <div class="tool-section bed-tool">
         <div class="tool-copy">
           <span class="tool-kicker">Bancal</span>
@@ -641,6 +643,11 @@
   </section>
 </main>
 
+<nav class="mobile-dock" aria-label="Navegación del planificador">
+  <button id="mobileCatalogBtn" aria-label="Mostrar cultivos" aria-pressed="false"><span aria-hidden="true">●</span>Cultivos</button>
+  <button id="mobileToolsBtn" aria-label="Mostrar herramientas" aria-pressed="false"><span aria-hidden="true">＋</span>Herramientas</button>
+</nav>
+
 <div id="ghost"></div>
 <div id="toast"></div>
 
@@ -682,6 +689,6 @@
 <script src="details.js"></script>
 <script src="details-extra.js"></script>
 <script src="siembra-inta.js"></script>
-<script src="app.js?v=2.1.2"></script>
+<script src="app.js?v=3.0.2"></script>
 </body>
 </html>
