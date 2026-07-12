@@ -3,7 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Circuito Verde · Planificador de Huerta e Invernadero — Patagonia / INTA Bariloche</title>
+<meta name="theme-color" content="#174c3c" />
+<meta name="description" content="Planificá tu invernadero patagónico con cultivos, bancales y distancias reales." />
+<title>Circuito Verde · Planificador de invernadero</title>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root{
@@ -442,17 +444,20 @@
   }
   @keyframes sheetIn{from{transform:translateY(100%)}to{transform:none}}
 </style>
+<link rel="stylesheet" href="styles.css?v=2.1.2" />
 </head>
 <body>
-<header>
-  <div class="logo">🌱</div>
-  <h1>Circuito Verde
-    <small>Planificador de huerta e invernadero · clima patagónico (INTA Bariloche)</small>
-  </h1>
+<header class="app-header">
+  <div class="brand-mark" aria-hidden="true"><span></span></div>
+  <div class="brand-copy">
+    <h1>Circuito Verde</h1>
+    <p>Planificador de invernadero</p>
+  </div>
+  <span class="location-pill">Patagonia · INTA Bariloche</span>
   <div class="spacer"></div>
-  <div class="hint">Arrastrá las plantas y los tablones al lienzo. El círculo punteado de cada planta es la distancia real que necesita. 1 cuadro = 1&nbsp;m².</div>
-  <button id="btnTutorial" class="hdr-btn" title="Cómo se usa la app">❔ Cómo se usa</button>
   <span id="cloud" class="cloud" hidden></span>
+  <button id="btnTutorial" class="header-action" title="Cómo usar la app">Ayuda</button>
+  <button id="btn-login" class="header-action sync-action" title="Sincronizar entre dispositivos">Sincronizar</button>
   <div id="user-menu" hidden>
     <img id="user-avatar" alt="" />
     <div class="u-info"><span id="user-name"></span></div>
@@ -463,9 +468,9 @@
 <!-- aviso de orientación (vertical angosto) -->
 <div id="rotate-hint">
   <div class="rot-card">
-    <div class="rot-emoji">📱↻</div>
+    <div class="rot-emoji">↻</div>
     <h2>Mejor en horizontal</h2>
-    <p>Circuito Verde es un planificador visual: necesita pantalla ancha. <b>Girá el dispositivo</b> a horizontal para diseñar cómodo.</p>
+    <p>Girando el teléfono vas a tener más espacio para diseñar tu invernadero.</p>
     <button class="btn" id="rotDismiss">Usar igual</button>
   </div>
 </div>
@@ -490,11 +495,14 @@
 <!-- gate de login con Google -->
 <div id="login-gate" hidden>
   <div class="login-card">
-    <div class="login-logo">🌱</div>
-    <h2>Circuito Verde</h2>
-    <p class="login-sub">Planificador de huerta e invernadero · Patagonia</p>
-    <p class="login-txt">Ingresá con tu cuenta de Google para usar el planificador.</p>
+    <button class="login-close" id="loginClose" aria-label="Cerrar">✕</button>
+    <div class="login-logo"><span></span></div>
+    <span class="login-kicker">Sincronización opcional</span>
+    <h2>Llevá tu diseño con vos</h2>
+    <p class="login-txt">Ingresá con Google para guardar el proyecto en la nube y abrirlo desde cualquier dispositivo.</p>
     <div id="g-signin"></div>
+    <button class="btn ghost guest-btn" id="guestMode">Seguir sin iniciar sesión</button>
+    <p class="login-note">Tu diseño ya se guarda automáticamente en este dispositivo.</p>
     <p id="login-error" hidden></p>
   </div>
 </div>
@@ -504,18 +512,26 @@
   <div id="catBackdrop"></div>
   <aside>
     <div class="panel-head">
-      <h2>Catálogo de plantas <button id="catClose" aria-label="Cerrar catálogo">✕</button></h2>
+      <div class="panel-title-row">
+        <div>
+          <span class="step-label">Paso 1</span>
+          <h2>Elegí tus cultivos</h2>
+          <p>Sumalos al plano con el botón + o arrastrándolos.</p>
+        </div>
+        <button id="catClose" aria-label="Cerrar catálogo">✕</button>
+      </div>
       <div class="tabs">
-        <button data-view="todas" class="active">1 · Todas</button>
-        <button data-view="categoria">2 · Por categoría</button>
-        <button data-view="grupo">3 · Científico / grupos</button>
+        <button data-view="todas" class="active">Todas</button>
+        <button data-view="categoria">Categorías</button>
+        <button data-view="grupo">Familias</button>
       </div>
     </div>
-    <div class="search"><input id="search" type="text" placeholder="Buscar planta, nombre científico, función…"/></div>
-    <div class="filterbar" id="fnFilters"></div>
+    <div class="search"><span aria-hidden="true">⌕</span><input id="search" type="search" placeholder="Buscar tomate, lechuga, aromáticas…" aria-label="Buscar cultivos"/></div>
+    <div class="filter-title">Filtrar por beneficio</div>
+    <div class="filterbar benefit-filters" id="fnFilters"></div>
     <div class="season-row">
-      <span class="season-lbl">🗓️ Temporada</span>
-      <div class="filterbar" id="seasonFilters" style="padding:0;flex:1"></div>
+      <span class="season-lbl">Temporada</span>
+      <div class="filterbar horizontal-scroll" id="seasonFilters"></div>
     </div>
     <div class="catalog" id="catalog"><div class="loading">Cargando catálogo…</div></div>
     <div class="legend">
@@ -527,66 +543,98 @@
 
   <!-- PLANIFICADOR -->
   <section class="planner">
-    <div class="toolbar">
-      <button class="btn ghost" id="catToggle" title="Mostrar/ocultar catálogo">☰</button>
-      <div class="group">
-        <label>Escala</label>
-        <button class="btn ghost" id="zoomOut">−</button>
-        <span id="scaleLbl" style="font-size:11px;min-width:74px;text-align:center">100 px/m</span>
-        <button class="btn ghost" id="zoomIn">+</button>
-        <label class="snap-lbl" style="margin-left:6px" title="Ajustá la posición a una grilla de 0,25 m para alinear prolijo"><input type="checkbox" id="snapChk"/> 🧲 Ajustar a grilla</label>
-      </div>
-      <div class="group">
-        <label>Bancal (m)</label>
-        largo <input type="number" id="bL" value="2" step="0.1" min="0.2"/>
-        ancho <input type="number" id="bW" value="1" step="0.1" min="0.2"/>
-        <button class="btn wood" id="addBoard">+ Bancal</button>
-      </div>
-      <div class="group">
-        <label>Terreno m</label>
-        <input type="number" id="tW" value="12" step="1" min="2"/> ×
-        <input type="number" id="tH" value="8" step="1" min="2"/>
-        <button class="btn ghost" id="setTerreno">Aplicar</button>
+    <div class="workspace-head">
+      <div class="workspace-title">
+        <button class="catalog-toggle" id="catToggle" title="Mostrar u ocultar cultivos" aria-label="Mostrar u ocultar cultivos">☰</button>
+        <div>
+          <span class="step-label">Paso 2</span>
+          <h2>Diseñá tu espacio</h2>
+          <p>Las medidas y distancias del plano están a escala real.</p>
+        </div>
       </div>
       <div class="group proj-group">
-        <label>📁 Proyecto</label>
+        <label for="projSelect">Proyecto</label>
         <select id="projSelect" class="proj-select" title="Cargar proyecto"></select>
-        <button class="iconbtn" id="projSave" title="Guardar proyecto">💾</button>
-        <button class="iconbtn" id="projNew" title="Nuevo / vaciar">＋</button>
-        <button class="iconbtn" id="projImport" title="Importar JSON">⤓</button>
+        <button class="iconbtn" id="projSave" title="Guardar proyecto" aria-label="Guardar proyecto">Guardar</button>
+        <button class="iconbtn subtle" id="projNew" title="Crear proyecto nuevo" aria-label="Crear proyecto nuevo">Nuevo</button>
+        <button class="iconbtn subtle" id="projImport" title="Importar proyecto" aria-label="Importar proyecto">Importar</button>
         <input type="file" id="projFile" accept="application/json,.json" hidden/>
       </div>
-      <button class="btn ghost" id="calBtn" title="Calendario de siembra">📅 Calendario</button>
-      <div class="spacer" style="flex:1"></div>
-      <button class="btn ghost" id="undoBtn" title="Deshacer (Ctrl+Z)" disabled>↶</button>
-      <button class="btn ghost" id="analysisBtn" title="Análisis del diseño">📊 Análisis</button>
-      <div class="group" style="gap:4px">
-        <label>Exportar</label>
-        <button class="btn ghost" id="exportBtn" title="Descargar JSON">JSON</button>
-        <button class="btn ghost" id="pngBtn" title="Descargar imagen PNG">🖼 PNG</button>
-        <button class="btn ghost" id="printBtn" title="Imprimir / PDF">🖨</button>
+    </div>
+    <div class="toolbar">
+      <div class="tool-section bed-tool">
+        <div class="tool-copy">
+          <span class="tool-kicker">Bancal</span>
+          <strong>Crear zona de cultivo</strong>
+        </div>
+        <div class="measure-fields" role="group" aria-label="Medidas del bancal">
+          <label class="measure-field" for="bL"><span>Largo</span><span class="measure-input"><input type="number" id="bL" value="2" step="0.1" min="0.2"/><small>m</small></span></label>
+          <span class="dimension-x" aria-hidden="true">×</span>
+          <label class="measure-field" for="bW"><span>Ancho</span><span class="measure-input"><input type="number" id="bW" value="1" step="0.1" min="0.2"/><small>m</small></span></label>
+        </div>
+        <button class="btn primary" id="addBoard">Crear bancal</button>
       </div>
-      <button class="btn danger" id="clearBtn">Vaciar</button>
+      <div class="tool-section terrain-tool">
+        <div class="tool-copy">
+          <span class="tool-kicker">Terreno</span>
+          <strong>Medidas totales</strong>
+        </div>
+        <div class="measure-fields" role="group" aria-label="Medidas del terreno">
+          <label class="measure-field" for="tW"><span>Largo</span><span class="measure-input"><input type="number" id="tW" value="12" step="1" min="2"/><small>m</small></span></label>
+          <span class="dimension-x" aria-hidden="true">×</span>
+          <label class="measure-field" for="tH"><span>Ancho</span><span class="measure-input"><input type="number" id="tH" value="8" step="1" min="2"/><small>m</small></span></label>
+        </div>
+        <button class="btn secondary" id="setTerreno">Aplicar</button>
+      </div>
+      <div class="tool-section view-tool">
+        <div class="zoom-control" aria-label="Zoom del plano">
+          <button class="btn ghost" id="zoomOut" aria-label="Alejar">−</button>
+          <span id="scaleLbl">100 px/m</span>
+          <button class="btn ghost" id="zoomIn" aria-label="Acercar">+</button>
+        </div>
+        <label class="snap-lbl" title="Alinear elementos cada 25 cm"><input type="checkbox" id="snapChk"/><span>Alinear a grilla</span></label>
+      </div>
+      <div class="tool-section action-tool">
+        <button class="btn ghost icon-only" id="undoBtn" title="Deshacer (Ctrl+Z)" aria-label="Deshacer" disabled>↶</button>
+        <button class="btn secondary" id="calBtn" title="Calendario de siembra">Calendario</button>
+        <button class="btn secondary" id="analysisBtn" title="Revisar el diseño">Revisar plan</button>
+        <details class="more-menu">
+          <summary class="btn ghost">Más</summary>
+          <div class="more-popover">
+            <span>Exportar proyecto</span>
+            <button class="menu-btn" id="pngBtn">Descargar imagen PNG</button>
+            <button class="menu-btn" id="printBtn">Imprimir o guardar PDF</button>
+            <button class="menu-btn" id="exportBtn">Descargar archivo JSON</button>
+            <hr/>
+            <button class="menu-btn danger-text" id="clearBtn">Vaciar todo el plano</button>
+          </div>
+        </details>
+      </div>
     </div>
 
     <div class="stage-wrap" id="stageWrap">
-      <button id="delSel" class="del-sel" hidden>🗑 Borrar selección</button>
+      <div class="canvas-badge"><span></span> Plano a escala · 1 cuadro = 1 m²</div>
+      <button id="delSel" class="del-sel" hidden>Borrar selección</button>
       <div id="stage">
         <canvas id="grid"></canvas>
         <div class="empty-hint" id="emptyHint">
-          <div class="big">👉🌱</div>
-          Arrastrá plantas y tablones acá<br/>para diseñar tu bancal
+          <div class="empty-icon"><span></span></div>
+          <span class="step-label">Tu plano está listo</span>
+          <h3>Empezá creando un bancal</h3>
+          <p>Definí sus medidas arriba y agregá los cultivos que querés plantar.</p>
+          <button class="btn primary" id="emptyAddBoard">Crear mi primer bancal</button>
+          <small>Después podés moverlo, rotarlo y pedirle a la app que acomode las plantas.</small>
         </div>
       </div>
     </div>
     <div class="stats" id="stats">
-      <h4 id="statsToggle" title="Mostrar/ocultar">Resumen del diseño <span class="caret">▾</span></h4>
+      <h4 id="statsToggle" title="Mostrar u ocultar">Resumen del diseño <span class="caret">▾</span></h4>
       <div class="stats-body">
         <div class="row"><span>Plantas</span><b id="stPlants">0</b></div>
         <div class="row"><span>Especies</span><b id="stSpecies">0</b></div>
         <div class="row"><span>Bancales</span><b id="stBoards">0</b></div>
-        <div class="row"><span>Área bancales</span><b id="stArea">0 m²</b></div>
-        <div class="row conflict" id="stConflictRow" hidden><span>⚠️ Malas vecinas</span><b id="stConflict">0</b></div>
+        <div class="row"><span>Superficie cultivada</span><b id="stArea">0 m²</b></div>
+        <div class="row conflict" id="stConflictRow" hidden><span>Conflictos detectados</span><b id="stConflict">0</b></div>
         <div class="mini" id="stMini"></div>
       </div>
     </div>
@@ -634,6 +682,6 @@
 <script src="details.js"></script>
 <script src="details-extra.js"></script>
 <script src="siembra-inta.js"></script>
-<script src="app.js"></script>
+<script src="app.js?v=2.1.2"></script>
 </body>
 </html>

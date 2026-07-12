@@ -221,8 +221,8 @@ function plantCard(p){
     <div class="fx">${p.funciones.map(f=>FX[f]||"").join("")}${p.inv?"🏠":""}</div>
     ${met}
     <div class="card-actions">
-      <button class="info-btn" data-info="${p.id}">info</button>
-      <button class="add-btn" data-add="${p.id}" title="Agregar al lienzo · Shift = 5 · Ctrl = 10">＋</button>
+      <button class="info-btn" data-info="${p.id}" aria-label="Ver ficha de ${p.nombre}">Ver ficha</button>
+      <button class="add-btn" data-add="${p.id}" aria-label="Agregar ${p.nombre} al plano" title="Agregar al plano · Shift = 5 · Ctrl = 10">＋</button>
     </div>
   </div>`;
 }
@@ -270,13 +270,13 @@ function renderFilters(){
   const order = ["comestible","repele","poliniza","benefico","nitrogeno","cobertura","invernadero"];
   $("#fnFilters").innerHTML = order.map(f=>{
     const lbl = f==="invernadero" ? "🏠 Invernadero" : (FX[f]+" "+FX_NAME[f]);
-    return `<span class="chip ${activeFx.has(f)?"active":""}" data-fx="${f}">${lbl}</span>`;
+    return `<button type="button" class="chip ${activeFx.has(f)?"active":""}" data-fx="${f}" aria-pressed="${activeFx.has(f)}">${lbl}</button>`;
   }).join("");
 }
 const SEASONS = [["Primavera","🌸"],["Verano","☀️"],["Otoño","🍂"],["Invierno","❄️"]];
 function renderSeasonFilter(){
   $("#seasonFilters").innerHTML = SEASONS.map(([s,emo])=>
-    `<span class="chip season ${activeSeason.has(s)?"active":""}" data-season="${s}">${emo} ${s}</span>`).join("");
+    `<button type="button" class="chip season ${activeSeason.has(s)?"active":""}" data-season="${s}" aria-pressed="${activeSeason.has(s)}">${emo} ${s}</button>`).join("");
 }
 
 /* ============================================================
@@ -305,7 +305,7 @@ function drawGrid(){
   for(let y=my;y<=my+th;y+=s/2){ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+tw,y);ctx.stroke();}
   // metros
   ctx.strokeStyle = "rgba(63,125,78,.26)"; ctx.lineWidth=1.2;
-  ctx.fillStyle="rgba(44,90,57,.55)"; ctx.font="10px Segoe UI";
+  ctx.fillStyle="rgba(23,76,60,.58)"; ctx.font="10px Manrope, sans-serif";
   for(let m=0;m<=state.terreno.w;m++){const x=mx+m*s;ctx.beginPath();ctx.moveTo(x,my);ctx.lineTo(x,my+th);ctx.stroke(); if(m>0&&m<state.terreno.w)ctx.fillText(m,x+2,my+11);}
   for(let m=0;m<=state.terreno.h;m++){const y=my+m*s;ctx.beginPath();ctx.moveTo(mx,y);ctx.lineTo(mx+tw,y);ctx.stroke(); if(m>0&&m<state.terreno.h)ctx.fillText(m,mx+2,y-2);}
   ctx.restore();
@@ -313,7 +313,7 @@ function drawGrid(){
   ctx.strokeStyle = "#2c5a39"; ctx.lineWidth=2.5; ctx.setLineDash([9,5]);
   ctx.strokeRect(mx,my,tw,th); ctx.setLineDash([]);
   // etiqueta del terreno
-  ctx.fillStyle="#2c5a39"; ctx.font="bold 12px Segoe UI";
+  ctx.fillStyle="#174c3c"; ctx.font="bold 12px Manrope, sans-serif";
   ctx.fillText(`TERRENO ${state.terreno.w} × ${state.terreno.h} m`, mx+6, my-7>10?my-7:my+16);
 }
 
@@ -333,11 +333,14 @@ function plantEl(inst){
   const p = byId[inst.id]; if(!p) return document.createElement("div");
   const s = state.scale;
   const ringPx = (p.dist/100)*s;                 // diámetro real (distancia)
-  const iconPx = Math.max(14, Math.min(ringPx, 72));  // el ícono nunca supera el círculo
-  const showTag = iconPx >= 30;                  // ocultar nombre cuando es chico
+  const iconPx = Math.max(18, Math.min(ringPx*.68, 64)); // dejar visible la distancia alrededor
+  const showTag = ringPx >= 30;                  // evitar etiquetas solo en marcos muy chicos
+  const hitPx = Math.max(28, ringPx, iconPx);    // centro y área táctil compartidos
   const el = document.createElement("div");
   el.className = "node plant-node"; el.dataset.uid = inst.uid;
   el.style.left = (inst.x*s)+"px"; el.style.top = (inst.y*s)+"px";
+  el.style.width = hitPx+"px"; el.style.height = hitPx+"px";
+  el.style.setProperty("--icon-size",iconPx+"px");
   el.innerHTML = `
     <div class="pring" style="width:${ringPx}px;height:${ringPx}px"></div>
     <div class="psvg" style="width:${iconPx}px;height:${iconPx}px">${artHTML(p)}</div>
@@ -348,28 +351,6 @@ function plantEl(inst){
 /* grosor visual del listón de madera (en px), dibujado POR FUERA del interior */
 const FRAME_M = 0.09;
 function boardFrameThick(){ return Math.max(7, Math.min(state.scale*FRAME_M, 18)); }
-/* frame de listones (W,H = footprint TOTAL; t = grosor de madera; interior con mulch) */
-function boardFrameInner(W,H,t){
-  const ix=t, iy=t, iw=Math.max(0,W-2*t), ih=Math.max(0,H-2*t);
-  return `
-    <path d="M0 0 H${W} V${H} H0 Z M${t} ${t} H${W-t} V${H-t} H${t} Z"
-      fill="url(#woodGrain)" fill-rule="evenodd" stroke="#6e4a25" stroke-width="1.4"/>
-    <line x1="0" y1="0" x2="${t}" y2="${t}" stroke="#5e3f1f" stroke-width="1"/>
-    <line x1="${W}" y1="0" x2="${W-t}" y2="${t}" stroke="#5e3f1f" stroke-width="1"/>
-    <line x1="${W}" y1="${H}" x2="${W-t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
-    <line x1="0" y1="${H}" x2="${t}" y2="${H-t}" stroke="#5e3f1f" stroke-width="1"/>
-    <rect x="${ix}" y="${iy}" width="${iw}" height="${ih}" fill="url(#mulch)" stroke="#9c7a3f" stroke-width="1.2"/>
-    <path d="M${ix} ${iy} H${ix+iw}" stroke="#000" stroke-opacity=".12" stroke-width="2"/>
-    <path d="M${ix} ${iy} V${iy+ih}" stroke="#000" stroke-opacity=".12" stroke-width="2"/>
-    <path d="M0 0 H${W}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
-    <path d="M0 0 V${H}" stroke="#dcb589" stroke-width="2" opacity=".9"/>
-    <path d="M0 ${H} H${W}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>
-    <path d="M${W} 0 V${H}" stroke="#5e3f1f" stroke-width="2" opacity=".7"/>`;
-}
-function boardFrameSVG(W,H,t){
-  return `<svg class="frame" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}"
-    preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">${boardFrameInner(W,H,t)}</svg>`;
-}
 function boardEl(b){
   const s = state.scale, ft = boardFrameThick();
   const wpx = b.L*s + 2*ft, hpx = b.W*s + 2*ft;
@@ -377,14 +358,16 @@ function boardEl(b){
   el.className = "node board"; el.dataset.uid = b.uid;
   el.style.left = (b.x*s - ft)+"px"; el.style.top = (b.y*s - ft)+"px";
   el.innerHTML = `<div class="board-rect" style="width:${wpx}px;height:${hpx}px">
-      ${boardFrameSVG(wpx,hpx,ft)}
+      <div class="board-frame" style="--frame:${ft}px" aria-hidden="true"><div class="board-soil"></div></div>
       <span class="dim h">${b.L.toFixed(1)} m</span>
       <span class="dim w">${b.W.toFixed(1)} m</span>
-      <button class="rot" title="Rotar 90°">⟳</button>
-      <button class="lock ${b.locked?"on":""}" title="${b.locked?"Bloqueado: las plantas se mueven con el bancal":"Desbloqueado: el bancal se mueve solo"}">${b.locked?"🔒":"🔓"}</button>
-      <button class="del" title="Quitar bancal">✕</button>
-      <button class="ana" title="Diseñar este bancal: elegí qué plantar y te calculo la mejor forma (+ rotación INTA)">📐 Diseñar</button>
-      <span class="handle" title="Redimensionar"></span>
+      <div class="board-actions">
+        <button class="rot" title="Rotar el bancal 90 grados" aria-label="Rotar el bancal 90 grados"><span aria-hidden="true">↻</span> Rotar</button>
+        <button class="lock ${b.locked?"on":""}" title="${b.locked?"Hacer que el bancal se mueva solo":"Mover las plantas junto con el bancal"}">${b.locked?"Mover solo":"Mover con plantas"}</button>
+        <button class="del" title="Eliminar este bancal" aria-label="Eliminar este bancal">Eliminar</button>
+      </div>
+      <button class="ana" title="Elegir cultivos y calcular cómo distribuirlos">Organizar cultivos</button>
+      <button class="handle" title="Cambiar el tamaño del bancal" aria-label="Cambiar el tamaño del bancal"></button>
     </div>`;
   el.querySelector(".del").addEventListener("pointerdown",e=>{e.stopPropagation();});
   el.querySelector(".del").addEventListener("click",e=>{
@@ -512,9 +495,6 @@ function makeBoardResizable(handle, rectEl, b){
       b.W = Math.max(0.2, +(W0 + (ev.clientY-startY)/s).toFixed(2));
       const ft=boardFrameThick(), Wpx=b.L*s+2*ft, Hpx=b.W*s+2*ft;
       rectEl.style.width=Wpx+"px"; rectEl.style.height=Hpx+"px";
-      const svg=rectEl.querySelector("svg.frame");
-      svg.setAttribute("width",Wpx); svg.setAttribute("height",Hpx);
-      svg.setAttribute("viewBox",`0 0 ${Wpx} ${Hpx}`); svg.innerHTML=boardFrameInner(Wpx,Hpx,ft);
       rectEl.querySelector(".dim.h").textContent=b.L.toFixed(1)+" m";
       rectEl.querySelector(".dim.w").textContent=b.W.toFixed(1)+" m";
     };
@@ -751,6 +731,8 @@ function bind(){
     save(); renderStage();
     toast("📐 Tocá “Diseñar” en el bancal: elegís qué plantar y te calculo la mejor forma");
   });
+  const emptyAdd=$("#emptyAddBoard");
+  if(emptyAdd) emptyAdd.addEventListener("click",()=>$("#addBoard").click());
   // terreno
   $("#setTerreno").addEventListener("click",()=>{
     pushUndo();
@@ -788,6 +770,10 @@ function bind(){
   $("#projSelect").addEventListener("change",e=>{ const n=e.target.value; if(n) loadProject(n); else setCurProj(""); });
   // logout
   $("#btn-logout").addEventListener("click",doLogout);
+  const loginBtn=$("#btn-login"); if(loginBtn) loginBtn.addEventListener("click",requireLogin);
+  const guestBtn=$("#guestMode"); if(guestBtn) guestBtn.addEventListener("click",closeLogin);
+  const loginClose=$("#loginClose"); if(loginClose) loginClose.addEventListener("click",closeLogin);
+  $("#login-gate").addEventListener("click",e=>{ if(e.target.id==="login-gate") closeLogin(); });
   // plegar resumen
   $("#statsToggle").addEventListener("click",()=>$("#stats").classList.toggle("collapsed"));
   // tutorial
@@ -1176,11 +1162,11 @@ function openBoardAnalysis(b){
 function boardAnaHTML(b){
   const inside=plantsInBoard(b);
   const tabs=`<div class="btabs">
-      <button class="btab ${boardTab==='plantar'?'on':''}" data-btab="plantar">📐 Plantar / optimizar</button>
-      <button class="btab ${boardTab==='rotacion'?'on':''}" data-btab="rotacion">🔄 Rotación INTA</button>
+      <button class="btab ${boardTab==='plantar'?'on':''}" data-btab="plantar">Distribución</button>
+      <button class="btab ${boardTab==='rotacion'?'on':''}" data-btab="rotacion">Rotación INTA</button>
     </div>`;
   return `
-    <div class="m-head"><div><h3>📐 Diseñar bancal · ${b.L.toFixed(1)} × ${b.W.toFixed(1)} m</h3>
+    <div class="m-head"><div><h3>Organizar cultivos · ${b.L.toFixed(1)} × ${b.W.toFixed(1)} m</h3>
       <div class="m-sci">${inside.length} planta${inside.length!==1?"s":""} adentro</div></div></div>
     <div style="padding:10px 18px 0">${tabs}</div>
     <div id="boardTab">${renderBoardTab(b, boardTab)}</div>`;
@@ -1191,7 +1177,7 @@ function plantarTabHTML(b){
   const counts={}; inside.forEach(pl=>counts[pl.id]=(counts[pl.id]||0)+1);
   const def = Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
   return `<div style="padding:8px 18px 16px">
-    <div class="tip-box">Elegí <b>qué querés plantar</b> (una o varias) y te calculo <b>cuántas entran y la mejor forma de acomodarlas</b> con las distancias de INTA. Tocá una opción y las ubica solas. 🌱</div>
+    <div class="tip-box">Elegí qué querés plantar y calculamos <b>cuántas entran</b> y cómo distribuirlas respetando las distancias recomendadas.</div>
     ${optimizerSection(b, def)}
   </div>`;
 }
@@ -1490,24 +1476,14 @@ function renderCalendar(){
    ============================================================ */
 const TUT_KEY = "circuitoVerde.tutDone";
 const TUTORIAL = [
-  {art:"🌱", title:"¡Bienvenido a Circuito Verde!",
-   text:"Planificá tu <b>huerta e invernadero</b> para el clima patagónico (datos de <b>INTA Bariloche</b>). Elegí plantas, armá tus bancales y dejá que la app te diga <b>cuántas entran y cómo ordenarlas</b>. Te muestro lo clave en 1 minuto."},
-  {art:"📚", title:"Catálogo de 61 plantas",
-   text:"A la izquierda están las plantas. Cambiá entre <b>Todas</b>, <b>por categoría</b> y <b>por nombre científico/grupo</b>, usá el <b>buscador</b> y filtrá por <b>función</b> (🥬🛡️🐝🐞) y por <b>temporada</b> (🌸☀️🍂❄️)."},
-  {art:"➕", title:"Agregar plantas al lienzo",
-   text:"Tocá el botón <b>➕</b> de una planta para sumarla (<kbd>Shift</kbd>=5, <kbd>Ctrl</kbd>=10) o <b>arrastrala</b>. Se ubican solas en el próximo espacio libre. El <b>círculo punteado</b> es la distancia real que necesita; si dos quedan muy juntas, se marca en <b>rojo</b>."},
-  {art:"ℹ️", title:"Ficha de cada planta (info)",
-   text:"El botón <b>info</b> abre la ficha: <b>buenas y malas compañeras</b> (clickeables), riego, luz, tolerancia a heladas, días a cosecha, altura, temporada y forma de siembra INTA."},
-  {art:"🟫", title:"Bancales con borde de madera",
-   text:"Elegí <b>largo y ancho</b> (= el interior cultivable) y tocá <b>+ Bancal</b>. La madera va por fuera y el interior tiene <b>mulch de paja</b>. Movelo, <b>redimensionalo</b> desde la esquina y <b>rotalo 90°</b> con ⟳ (las plantas rotan con él)."},
-  {art:"📐", title:"Diseñá el bancal (¡lo mejor!)",
-   text:"Tocá <b>📐 Diseñar</b> en un bancal: elegís <b>una o varias plantas</b> (podés pedir “el doble de lechuga”) y te dice <b>cuántas entran y la mejor forma</b> de acomodarlas — tocás <b>En línea</b> o <b>Tresbolillo</b> y las planta solas. Además te muestra la <b>rotación INTA</b>. Acá está el mayor valor."},
-  {art:"🗺️", title:"Terreno, calendario y proyectos",
-   text:"El recuadro punteado es tu <b>terreno</b> (cambiá medidas y <b>Aplicar</b>), con margen alrededor para maniobrar. <b>📅 Calendario</b>: qué sembrar/cosechar cada mes. <b>📁 Proyecto</b>: guardá, cargá e importá varios diseños."},
-  {art:"⌨️", title:"Selección y atajos",
-   text:"<kbd>Shift</kbd>+clic selecciona <b>varias</b>; <kbd>Ctrl</kbd>+<kbd>A</kbd> todas. <kbd>Ctrl</kbd>+<kbd>C</kbd>/<kbd>V</kbd> copiar/pegar, <kbd>Ctrl</kbd>+<kbd>X</kbd> cortar, <kbd>Ctrl</kbd>+<kbd>D</kbd> duplicar, <b>flechas</b> mover, <kbd>Ctrl</kbd>+<kbd>Z</kbd> deshacer. <kbd>Ctrl</kbd>+rueda = zoom. En celular: <b>tocá</b> una planta para colocarla."},
-  {art:"💾", title:"Se guarda solo · Exportar",
-   text:"Tu diseño se <b>guarda automáticamente</b> y, con tu cuenta de Google, se <b>sincroniza</b> entre dispositivos. <b>📊 Análisis</b> da el resumen y la lista de compra; exportás a <b>PNG / JSON</b> o lo <b>imprimís</b>. ¡A diseñar tu huerta! 🌻"},
+  {art:"01", title:"Creá el espacio de cultivo",
+   text:"Indicá las medidas del <b>terreno</b> y del <b>bancal</b>. Al crearlo vas a poder moverlo, rotarlo y cambiar su tamaño directamente sobre el plano."},
+  {art:"02", title:"Sumá los cultivos",
+   text:"Buscá una planta y tocá <b>+</b> para agregarla, o arrastrala al lugar que prefieras. El círculo punteado muestra la <b>distancia real</b> que necesita."},
+  {art:"03", title:"Dejá que la app los acomode",
+   text:"En cada bancal, tocá <b>Diseñar</b>. Elegí qué querés plantar y Circuito Verde calcula cuántas unidades entran y cómo distribuirlas."},
+  {art:"04", title:"Revisá y guardá tu plan",
+   text:"Usá <b>Revisar plan</b> para detectar incompatibilidades y preparar la lista de cultivos. El trabajo se guarda en este dispositivo; la sincronización con Google es opcional."},
 ];
 let tutStep = 0;
 function renderTut(){
@@ -1545,7 +1521,6 @@ function initGoogle(){
   waitForGoogle(()=>{
     google.accounts.id.initialize({client_id:GOOGLE_CLIENT_ID, callback:onGoogleCredential, auto_select:true});
     google.accounts.id.renderButton($("#g-signin"),{theme:"filled_blue",size:"large",text:"signin_with",shape:"pill",locale:"es"});
-    google.accounts.id.prompt();
   });
 }
 function onGoogleCredential(resp){
@@ -1554,17 +1529,39 @@ function onGoogleCredential(resp){
   saveSession({token:resp.credential, email:p.email, name:p.name||p.email, picture:p.picture||"", exp:p.exp});
   onAuthenticated();
 }
-function requireLogin(){ $("#login-gate").hidden=false; $("#user-menu").hidden=true; initGoogle(); }
-function onAuthenticated(){ $("#login-gate").hidden=true; renderUserChip(); maybeAutoTutorial(); syncNow(); }
+function requireLogin(){
+  if(!loginRequired()) return;
+  $("#login-error").hidden=true;
+  $("#login-gate").hidden=false;
+  initGoogle();
+}
+function closeLogin(){ $("#login-gate").hidden=true; }
+function onAuthenticated(){
+  closeLogin(); renderUserChip(); syncNow();
+  toast("Tu proyecto quedó sincronizado");
+}
 function renderUserChip(){
-  if(!loginRequired()||!session){ $("#user-menu").hidden=true; return; }
+  const loginBtn=$("#btn-login");
+  if(!loginRequired()){
+    $("#user-menu").hidden=true;
+    if(loginBtn) loginBtn.hidden=true;
+    return;
+  }
+  if(!sessionValid()){
+    if(session) saveSession(null);
+    $("#user-menu").hidden=true;
+    if(loginBtn) loginBtn.hidden=false;
+    return;
+  }
   $("#user-avatar").src = session.picture || "img/lechuga.png";
   $("#user-name").textContent = session.name || session.email;
   $("#user-menu").hidden=false;
+  if(loginBtn) loginBtn.hidden=true;
 }
 function doLogout(){
   if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
-  saveSession(null); renderUserChip(); setSyncUI("hidden"); requireLogin();
+  saveSession(null); closeLogin(); renderUserChip(); setSyncUI("hidden");
+  toast("La sincronización se cerró. El diseño sigue guardado en este dispositivo.");
 }
 
 /* ---------- catálogo (drawer en mobile) ---------- */
@@ -1623,7 +1620,7 @@ function init(){
   $("#tW").value=state.terreno.w; $("#tH").value=state.terreno.h;
   if(window.innerWidth < 880){ document.body.classList.add("cat-collapsed"); $("#stats").classList.add("collapsed"); }
   renderFilters(); renderSeasonFilter(); renderCatalog(); bind(); renderStage(); renderProjSelect();
-  if(loginRequired() && !sessionValid()){ requireLogin(); }
-  else { renderUserChip(); maybeAutoTutorial(); if(sessionValid()) syncNow(); }
+  renderUserChip();
+  if(sessionValid()) syncNow();
 }
 document.addEventListener("DOMContentLoaded",init);
